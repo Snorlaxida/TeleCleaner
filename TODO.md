@@ -44,6 +44,7 @@
 ## Medium Priority
 
 ### 5. Chat Management
+- [x] **Add "Select All" button for chats** ✅
 - [ ] Replace mock chat data with real data
 - [ ] Implement chat search/filter
 - [ ] Add chat type indicators (private/group/channel)
@@ -53,6 +54,7 @@
 - [ ] Add chat sorting options
 
 ### 6. Message Deletion
+- [x] **Add custom date range picker with calendar view** ✅
 - [ ] Implement progress tracking
 - [ ] Add batch deletion logic
 - [ ] Show deletion statistics

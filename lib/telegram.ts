@@ -116,7 +116,8 @@ export class TelegramClient {
    */
   filterMessagesByTime(
     messages: TelegramMessage[],
-    timeRange: 'last_day' | 'last_week' | 'all'
+    timeRange: 'last_day' | 'last_week' | 'all' | 'custom',
+    customRange?: { startDate: Date; endDate: Date }
   ): TelegramMessage[] {
     const now = new Date();
     
@@ -128,6 +129,21 @@ export class TelegramClient {
       case 'last_week':
         const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         return messages.filter(msg => msg.date >= oneWeekAgo);
+      
+      case 'custom':
+        if (customRange) {
+          // Set time to start of start date and end of end date
+          const startOfDay = new Date(customRange.startDate);
+          startOfDay.setHours(0, 0, 0, 0);
+          
+          const endOfDay = new Date(customRange.endDate);
+          endOfDay.setHours(23, 59, 59, 999);
+          
+          return messages.filter(msg => 
+            msg.date >= startOfDay && msg.date <= endOfDay
+          );
+        }
+        return messages;
       
       case 'all':
       default:
