@@ -4,4 +4,5 @@ module.exports = {
   rules: {
     'prettier/prettier': 'warn',
   },
+  ignorePatterns: ['supabase/functions/**'],
 };

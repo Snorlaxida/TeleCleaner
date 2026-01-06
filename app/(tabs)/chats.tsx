@@ -1,17 +1,9 @@
-import { View, Text, FlatList, TouchableOpacity, Alert } from 'react-native';
-import { useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import ChatListItem from '@/components/ChatListItem';
 import DeletionOptionsModal from '@/components/DeletionOptionsModal';
-
-// Mock data - will be replaced with real Telegram API data
-const MOCK_CHATS = [
-  { id: '1', name: 'John Doe', lastMessage: 'Hey, how are you?', timestamp: '2:30 PM', avatar: '👤', messageCount: 145 },
-  { id: '2', name: 'Work Group', lastMessage: 'Meeting at 3 PM', timestamp: '1:15 PM', avatar: '👥', messageCount: 892 },
-  { id: '3', name: 'Family', lastMessage: 'Dinner tonight?', timestamp: 'Yesterday', avatar: '👨‍👩‍👧‍👦', messageCount: 2341 },
-  { id: '4', name: 'Tech News', lastMessage: 'New AI breakthrough', timestamp: 'Yesterday', avatar: '📰', messageCount: 567 },
-  { id: '5', name: 'Sarah Wilson', lastMessage: 'Thanks!', timestamp: 'Monday', avatar: '👤', messageCount: 89 },
-];
+import { telegramClient, TelegramChat } from '@/lib/telegram';
 
 export type DeletionOption = 'last_day' | 'last_week' | 'all' | 'custom';
 
@@ -22,8 +14,28 @@ export interface CustomDateRange {
 
 export default function ChatsScreen() {
   const router = useRouter();
+  const [chats, setChats] = useState<TelegramChat[]>([]);
+  const [isLoadingChats, setIsLoadingChats] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const [showDeletionModal, setShowDeletionModal] = useState(false);
+
+  useEffect(() => {
+    const loadChats = async () => {
+      setIsLoadingChats(true);
+      try {
+        const result = await telegramClient.getChats();
+        setChats(result);
+      } catch (error) {
+        console.error(error);
+        Alert.alert('Error', 'Failed to load chats from Telegram.');
+      } finally {
+        setIsLoadingChats(false);
+      }
+    };
+
+    loadChats();
+  }, []);
 
   const toggleChatSelection = (chatId: string) => {
     const newSelection = new Set(selectedChats);
@@ -70,13 +82,39 @@ export default function ChatsScreen() {
   };
 
   const processDeletion = async (option: DeletionOption, customRange?: CustomDateRange) => {
-    // TODO: Implement actual deletion logic with Telegram API
-    Alert.alert('Success', 'Messages deleted successfully!');
-    setSelectedChats(new Set());
+    try {
+      setIsProcessing(true);
+
+      for (const chatId of selectedChats) {
+        const messages = await telegramClient.getMessages(chatId);
+        const filtered = telegramClient.filterMessagesByTime(
+          messages,
+          option,
+          customRange
+            ? {
+                startDate: customRange.startDate,
+                endDate: customRange.endDate,
+              }
+            : undefined
+        );
+        const messageIds = filtered.map((m) => m.id);
+        if (messageIds.length > 0) {
+          await telegramClient.deleteMessages(chatId, messageIds);
+        }
+      }
+
+      Alert.alert('Success', 'Messages deleted successfully!');
+      setSelectedChats(new Set());
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Failed to delete messages. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const selectAllChats = () => {
-    const allChatIds = new Set(MOCK_CHATS.map(chat => chat.id));
+    const allChatIds = new Set(chats.map(chat => chat.id));
     setSelectedChats(allChatIds);
   };
 
@@ -90,10 +128,17 @@ export default function ChatsScreen() {
       <View className="bg-gray-50 px-4 py-3 border-b border-gray-200">
         <TouchableOpacity
           className="bg-telegram-blue py-3 rounded-lg"
-          onPress={selectedChats.size === MOCK_CHATS.length ? deselectAllChats : selectAllChats}
+          onPress={selectedChats.size === chats.length ? deselectAllChats : selectAllChats}
+          disabled={chats.length === 0 || isLoadingChats}
         >
           <Text className="text-white text-center font-semibold">
-            {selectedChats.size === MOCK_CHATS.length ? '✓ Deselect All' : 'Select All Chats'}
+            {isLoadingChats
+              ? 'Loading...'
+              : chats.length === 0
+              ? 'No chats'
+              : selectedChats.size === chats.length
+              ? '✓ Deselect All'
+              : 'Select All Chats'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -111,20 +156,39 @@ export default function ChatsScreen() {
       )}
 
       {/* Chat List */}
-      <FlatList
-        data={MOCK_CHATS}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <ChatListItem
-            chat={item}
-            isSelected={selectedChats.has(item.id)}
-            onToggle={() => toggleChatSelection(item.id)}
-          />
-        )}
-        ItemSeparatorComponent={() => (
-          <View className="h-px bg-gray-200 ml-16" />
-        )}
-      />
+      {isLoadingChats ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#0088cc" />
+          <Text className="mt-4 text-gray-500">Loading chats...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={chats}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <ChatListItem
+              chat={{
+                id: item.id,
+                name: item.name,
+                lastMessage: item.lastMessage ?? '',
+                timestamp: item.timestamp ?? '',
+                avatar: item.avatar ?? '💬',
+                messageCount: item.messageCount ?? 0,
+              }}
+              isSelected={selectedChats.has(item.id)}
+              onToggle={() => toggleChatSelection(item.id)}
+            />
+          )}
+          ItemSeparatorComponent={() => (
+            <View className="h-px bg-gray-200 ml-16" />
+          )}
+          ListEmptyComponent={
+            <View className="flex-1 items-center justify-center mt-10">
+              <Text className="text-gray-500">No chats found.</Text>
+            </View>
+          }
+        />
+      )}
 
       {/* Delete Button */}
       {selectedChats.size > 0 && (
@@ -132,9 +196,10 @@ export default function ChatsScreen() {
           <TouchableOpacity
             className="bg-red-500 py-4 rounded-lg"
             onPress={() => setShowDeletionModal(true)}
+            disabled={isProcessing}
           >
             <Text className="text-white text-center text-lg font-semibold">
-              Delete Messages
+              {isProcessing ? 'Deleting...' : 'Delete Messages'}
             </Text>
           </TouchableOpacity>
         </View>

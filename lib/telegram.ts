@@ -1,7 +1,14 @@
 import Constants from 'expo-constants';
 
-const TELEGRAM_API_ID = Constants.expoConfig?.extra?.EXPO_PUBLIC_TELEGRAM_API_ID || '';
-const TELEGRAM_API_HASH = Constants.expoConfig?.extra?.EXPO_PUBLIC_TELEGRAM_API_HASH || '';
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  (Constants.expoConfig as any)?.extra?.EXPO_PUBLIC_API_URL ||
+  '';
+
+const SUPABASE_ANON_KEY =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  (Constants.expoConfig as any)?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  '';
 
 /**
  * Telegram API integration
@@ -22,32 +29,53 @@ export interface TelegramChat {
 export interface TelegramMessage {
   id: number;
   chatId: string;
-  text: string;
+  text: string | null;
   date: Date;
   isOutgoing: boolean;
 }
 
 export class TelegramClient {
-  private apiId: string;
-  private apiHash: string;
-  private isConnected: boolean = false;
+  private currentUserId: string | null = null; // we use phoneNumber as userId for now
 
   constructor() {
-    this.apiId = TELEGRAM_API_ID;
-    this.apiHash = TELEGRAM_API_HASH;
+    if (!API_BASE_URL) {
+      console.warn(
+        'EXPO_PUBLIC_API_URL is not set. TelegramClient will not be able to call backend functions.'
+      );
+    }
   }
 
   /**
    * Send verification code to phone number
    */
   async sendCode(phoneNumber: string): Promise<{ phoneCodeHash: string }> {
-    // TODO: Implement actual Telegram API call
-    console.log('Sending code to:', phoneNumber);
-    
-    // Simulated response
-    return {
-      phoneCodeHash: 'mock_hash_' + Date.now()
-    };
+    if (!API_BASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error('API base URL or Supabase anon key is not configured');
+    }
+
+    const res = await fetch(`${API_BASE_URL}/telegram-send-code`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        userId: phoneNumber,
+        phoneNumber,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('sendCode error:', body);
+      throw new Error('Failed to send verification code');
+    }
+
+    const data = (await res.json()) as { phoneCodeHash: string };
+    // Remember userId for subsequent calls
+    this.currentUserId = phoneNumber;
+    return data;
   }
 
   /**
@@ -58,28 +86,87 @@ export class TelegramClient {
     phoneCodeHash: string,
     code: string
   ): Promise<{ success: boolean; user?: any }> {
-    // TODO: Implement actual Telegram API call
-    console.log('Verifying code:', code);
-    
-    return {
-      success: true,
-      user: {
-        id: '123456',
+    if (!API_BASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error('API base URL or Supabase anon key is not configured');
+    }
+
+    const res = await fetch(`${API_BASE_URL}/telegram-sign-in`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        userId: phoneNumber,
         phoneNumber,
-        firstName: 'User'
-      }
-    };
+        phoneCodeHash,
+        code,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('signIn error:', body);
+      throw new Error('Failed to verify code');
+    }
+
+    this.currentUserId = phoneNumber;
+
+    return { success: true, user: { id: phoneNumber, phoneNumber } };
   }
 
   /**
    * Get list of all chats
    */
   async getChats(): Promise<TelegramChat[]> {
-    // TODO: Implement actual Telegram API call
-    console.log('Fetching chats...');
-    
-    // Return mock data for now
-    return [];
+    if (!API_BASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error('API base URL or Supabase anon key is not configured');
+    }
+    if (!this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    const res = await fetch(`${API_BASE_URL}/telegram-get-chats`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ userId: this.currentUserId }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('getChats error:', body);
+      throw new Error('Failed to load chats');
+    }
+
+    const data = (await res.json()) as {
+      chats: {
+        id: string;
+        title: string | null;
+        type: string;
+        lastMessage: { id: number; text: string | null; date: string | null } | null;
+        unreadCount: number;
+      }[];
+    };
+
+    return data.chats.map((chat) => ({
+      id: chat.id,
+      name: chat.title || 'Unknown chat',
+      type:
+        chat.type === 'channel'
+          ? 'channel'
+          : chat.type === 'group'
+          ? 'group'
+          : 'private',
+      lastMessage: chat.lastMessage?.text || undefined,
+      timestamp: chat.lastMessage?.date || undefined,
+      avatar: undefined,
+      messageCount: chat.unreadCount,
+    }));
   }
 
   /**
@@ -89,10 +176,44 @@ export class TelegramClient {
     chatId: string,
     limit: number = 100
   ): Promise<TelegramMessage[]> {
-    // TODO: Implement actual Telegram API call
-    console.log('Fetching messages for chat:', chatId);
-    
-    return [];
+    if (!API_BASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error('API base URL or Supabase anon key is not configured');
+    }
+    if (!this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    const res = await fetch(`${API_BASE_URL}/telegram-get-messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        userId: this.currentUserId,
+        chatId,
+        limit,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('getMessages error:', body);
+      throw new Error('Failed to load messages');
+    }
+
+    const data = (await res.json()) as {
+      messages: { id: number; text: string | null; date: string | null; outgoing: boolean }[];
+    };
+
+    return data.messages.map((m) => ({
+      id: m.id,
+      chatId,
+      text: m.text,
+      date: m.date ? new Date(m.date) : new Date(0),
+      isOutgoing: m.outgoing,
+    }));
   }
 
   /**
@@ -102,13 +223,35 @@ export class TelegramClient {
     chatId: string,
     messageIds: number[]
   ): Promise<{ success: boolean; deletedCount: number }> {
-    // TODO: Implement actual Telegram API call
-    console.log('Deleting messages:', messageIds.length);
-    
-    return {
-      success: true,
-      deletedCount: messageIds.length
-    };
+    if (!API_BASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error('API base URL or Supabase anon key is not configured');
+    }
+    if (!this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    const res = await fetch(`${API_BASE_URL}/telegram-delete-messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        userId: this.currentUserId,
+        chatId,
+        messageIds,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('deleteMessages error:', body);
+      throw new Error('Failed to delete messages');
+    }
+
+    const data = (await res.json()) as { success: boolean; deletedCount: number };
+    return data;
   }
 
   /**
@@ -155,8 +298,7 @@ export class TelegramClient {
    * Disconnect from Telegram
    */
   async disconnect(): Promise<void> {
-    // TODO: Implement actual disconnect
-    this.isConnected = false;
+    this.currentUserId = null;
   }
 }
 

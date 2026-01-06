@@ -2,6 +2,7 @@ import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { telegramClient } from '@/lib/telegram';
 
 export default function PhoneAuthScreen() {
   const router = useRouter();
@@ -17,15 +18,14 @@ export default function PhoneAuthScreen() {
     setIsLoading(true);
     
     try {
-      // TODO: Integrate with Telegram API to send verification code
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Navigate to verification screen
+      const { phoneCodeHash } = await telegramClient.sendCode(phoneNumber);
+
       router.push({
         pathname: '/(auth)/verify',
-        params: { phoneNumber }
+        params: { phoneNumber, phoneCodeHash },
       });
     } catch (error) {
+      console.error(error);
       Alert.alert('Error', 'Failed to send verification code. Please try again.');
     } finally {
       setIsLoading(false);

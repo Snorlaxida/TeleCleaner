@@ -1,11 +1,15 @@
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { telegramClient } from '@/lib/telegram';
 
 export default function VerifyCodeScreen() {
   const router = useRouter();
-  const { phoneNumber } = useLocalSearchParams<{ phoneNumber: string }>();
+  const { phoneNumber, phoneCodeHash } = useLocalSearchParams<{
+    phoneNumber: string;
+    phoneCodeHash: string;
+  }>();
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const inputRefs = useRef<(TextInput | null)[]>([]);
@@ -33,15 +37,18 @@ export default function VerifyCodeScreen() {
   };
 
   const verifyCode = async (fullCode: string) => {
+    if (!phoneNumber || !phoneCodeHash) {
+      Alert.alert('Error', 'Missing phone number or code hash.');
+      return;
+    }
+
     setIsLoading(true);
-    
+
     try {
-      // TODO: Verify code with Telegram API
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Navigate to main app
+      await telegramClient.signIn(phoneNumber, phoneCodeHash, fullCode);
       router.replace('/(tabs)/chats');
     } catch (error) {
+      console.error(error);
       Alert.alert('Invalid Code', 'The verification code you entered is incorrect.');
       setCode(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();

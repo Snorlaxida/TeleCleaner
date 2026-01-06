@@ -1,0 +1,14 @@
+{
+  "name": "telecleaner-telegram-functions",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "telegram": "^2.24.11",
+    "@supabase/supabase-js": "^2.33.0",
+    "buffer": "^6.0.3"
+  },
+  "scripts": {
+    "build": "echo \"No build step - functions are deployed as-is\"",
+    "lint": "echo \"linting not configured\""
+  }
+}
