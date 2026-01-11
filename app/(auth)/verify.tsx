@@ -10,7 +10,7 @@ export default function VerifyCodeScreen() {
     phoneNumber: string;
     phoneCodeHash: string;
   }>();
-  const [code, setCode] = useState(['', '', '', '', '', '']);
+  const [code, setCode] = useState(['', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
@@ -20,12 +20,12 @@ export default function VerifyCodeScreen() {
     setCode(newCode);
 
     // Auto-focus next input
-    if (text && index < 5) {
+    if (text && index < 4) {
       inputRefs.current[index + 1]?.focus();
     }
 
     // Auto-verify when all digits are entered
-    if (index === 5 && text) {
+    if (index === 4 && text) {
       verifyCode(newCode.join(''));
     }
   };
@@ -45,12 +45,21 @@ export default function VerifyCodeScreen() {
     setIsLoading(true);
 
     try {
-      await telegramClient.signIn(phoneNumber, phoneCodeHash, fullCode);
-      router.replace('/(tabs)/chats');
+      const result = await telegramClient.signIn(phoneNumber, phoneCodeHash, fullCode);
+      
+      // Check if 2FA is required
+      if (result.requires2FA) {
+        router.push({
+          pathname: '/(auth)/password',
+          params: { phoneNumber },
+        });
+      } else {
+        router.replace('/(tabs)/chats');
+      }
     } catch (error) {
       console.error(error);
       Alert.alert('Invalid Code', 'The verification code you entered is incorrect.');
-      setCode(['', '', '', '', '', '']);
+      setCode(['', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally {
       setIsLoading(false);

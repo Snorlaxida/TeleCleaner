@@ -24,12 +24,67 @@ export default function ChatsScreen() {
     const loadChats = async () => {
       setIsLoadingChats(true);
       try {
-        const result = await telegramClient.getChats();
-        setChats(result);
+        // Step 1: Load chats quickly (without message counts and avatars)
+        const result = await telegramClient.getChatsQuick();
+        
+        // Mark all chats as having avatars loading
+        const chatsWithLoadingState = result.map(chat => ({
+          ...chat,
+          avatarLoading: true,
+        }));
+        
+        setChats(chatsWithLoadingState);
+        setIsLoadingChats(false);
+
+        // Step 2: Load message counts AND profile photos for each chat incrementally
+        // Process in batches to avoid overwhelming the API
+        const batchSize = 5; // Process 5 chats at a time (increased from 3)
+        for (let i = 0; i < result.length; i += batchSize) {
+          const batch = result.slice(i, i + batchSize);
+          
+          // Load both counts and avatars for this batch in parallel
+          const dataPromises = batch.map(async (chat) => {
+            // Run count and photo fetch in parallel for each chat
+            const [count, photo] = await Promise.all([
+              telegramClient.getChatMessageCount(chat.id).catch(error => {
+                console.error(`Failed to count messages for chat ${chat.id}:`, error);
+                return 0;
+              }),
+              telegramClient.getChatProfilePhoto(chat.id).catch(error => {
+                console.error(`Failed to get photo for chat ${chat.id}:`, error);
+                return null;
+              })
+            ]);
+
+            return { 
+              chatId: chat.id, 
+              count,
+              photo: photo || chat.avatar, // Keep emoji/initial if no photo
+            };
+          });
+
+          const data = await Promise.all(dataPromises);
+
+          // Update chats with the new counts and avatars
+          setChats(prevChats => {
+            const updatedChats = [...prevChats];
+            data.forEach(({ chatId, count, photo }) => {
+              const index = updatedChats.findIndex(c => c.id === chatId);
+              if (index !== -1) {
+                updatedChats[index] = {
+                  ...updatedChats[index],
+                  messageCount: count,
+                  avatar: photo,
+                  avatarLoading: false,
+                };
+              }
+            });
+            return updatedChats;
+          });
+        }
       } catch (error) {
         console.error(error);
         Alert.alert('Error', 'Failed to load chats from Telegram.');
-      } finally {
         setIsLoadingChats(false);
       }
     };
@@ -157,9 +212,18 @@ export default function ChatsScreen() {
 
       {/* Chat List */}
       {isLoadingChats ? (
-        <View className="flex-1 items-center justify-center">
+        <View className="flex-1 items-center justify-center px-8">
           <ActivityIndicator size="large" color="#0088cc" />
-          <Text className="mt-4 text-gray-500">Loading chats...</Text>
+          <Text className="mt-4 text-gray-700 font-semibold text-lg">Loading chats...</Text>
+          <Text className="mt-2 text-gray-500 text-center">
+            Counting your messages in each chat.{'\n'}This may take a few minutes.
+          </Text>
+          <View className="mt-6 bg-blue-50 p-4 rounded-lg">
+            <Text className="text-gray-600 text-sm text-center">
+              💡 Tip: We're analyzing all your messages to show accurate counts.{'\n'}
+              Please be patient.
+            </Text>
+          </View>
         </View>
       ) : (
         <FlatList
@@ -174,6 +238,7 @@ export default function ChatsScreen() {
                 timestamp: item.timestamp ?? '',
                 avatar: item.avatar ?? '💬',
                 messageCount: item.messageCount ?? 0,
+                avatarLoading: item.avatarLoading ?? false,
               }}
               isSelected={selectedChats.has(item.id)}
               onToggle={() => toggleChatSelection(item.id)}

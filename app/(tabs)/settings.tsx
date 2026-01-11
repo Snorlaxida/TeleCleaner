@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import { telegramClient } from '@/lib/telegram';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -13,9 +14,16 @@ export default function SettingsScreen() {
         { 
           text: 'Logout', 
           style: 'destructive',
-          onPress: () => {
-            // TODO: Clear session and navigate to auth
-            router.replace('/(auth)/phone');
+          onPress: async () => {
+            try {
+              // Clear session on both client and server
+              await telegramClient.logout();
+              router.replace('/(auth)/phone');
+            } catch (error) {
+              console.error('Logout error:', error);
+              Alert.alert('Error', 'Failed to logout properly, but local session was cleared.');
+              router.replace('/(auth)/phone');
+            }
           }
         }
       ]

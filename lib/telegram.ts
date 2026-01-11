@@ -1,14 +1,34 @@
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   (Constants.expoConfig as any)?.extra?.EXPO_PUBLIC_API_URL ||
   '';
 
-const SUPABASE_ANON_KEY =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  (Constants.expoConfig as any)?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  '';
+const SESSION_STRING_KEY = '@telegram_session_string';
+const USER_ID_STORAGE_KEY = '@telegram_user_id';
+
+// Fetch with timeout utility
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 30000): Promise<Response> => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeout}ms`);
+    }
+    throw error;
+  }
+};
 
 /**
  * Telegram API integration
@@ -23,7 +43,8 @@ export interface TelegramChat {
   lastMessage?: string;
   timestamp?: string;
   avatar?: string;
-  messageCount?: number;
+  messageCount?: number; // Total number of user's messages in this chat
+  avatarLoading?: boolean; // True if avatar is being loaded
 }
 
 export interface TelegramMessage {
@@ -36,6 +57,7 @@ export interface TelegramMessage {
 
 export class TelegramClient {
   private currentUserId: string | null = null; // we use phoneNumber as userId for now
+  private authSessionString: string | null = null; // session string from sendCode for signIn
 
   constructor() {
     if (!API_BASE_URL) {
@@ -46,25 +68,122 @@ export class TelegramClient {
   }
 
   /**
-   * Send verification code to phone number
+   * Save user session to persistent storage
+   * Saves both userId and Telegram sessionString
    */
-  async sendCode(phoneNumber: string): Promise<{ phoneCodeHash: string }> {
-    if (!API_BASE_URL || !SUPABASE_ANON_KEY) {
-      throw new Error('API base URL or Supabase anon key is not configured');
+  private async saveSession(userId: string, sessionString: string): Promise<void> {
+    try {
+      await AsyncStorage.multiSet([
+        [USER_ID_STORAGE_KEY, userId],
+        [SESSION_STRING_KEY, sessionString]
+      ]);
+      console.log('Session saved successfully:', userId);
+    } catch (error) {
+      console.error('Failed to save session:', error);
+    }
+  }
+
+  /**
+   * Load user session from persistent storage
+   * Returns both userId and sessionString if available
+   */
+  async loadSession(): Promise<{ userId: string; sessionString: string } | null> {
+    try {
+      const [[, userId], [, sessionString]] = await AsyncStorage.multiGet([
+        USER_ID_STORAGE_KEY,
+        SESSION_STRING_KEY
+      ]);
+      
+      if (userId && sessionString) {
+        this.currentUserId = userId;
+        console.log('Session loaded successfully:', userId);
+        return { userId, sessionString };
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to load session:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Clear saved session
+   */
+  async clearSession(): Promise<void> {
+    try {
+      await AsyncStorage.multiRemove([USER_ID_STORAGE_KEY, SESSION_STRING_KEY]);
+      this.currentUserId = null;
+      this.authSessionString = null;
+      console.log('Session cleared successfully');
+    } catch (error) {
+      console.error('Failed to clear session:', error);
+    }
+  }
+
+  /**
+   * Check if user is authenticated
+   */
+  isAuthenticated(): boolean {
+    return this.currentUserId !== null;
+  }
+
+  /**
+   * Restore session from saved sessionString
+   * Returns true if session is valid, false otherwise
+   */
+  async restoreSession(userId: string, sessionString: string): Promise<boolean> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
     }
 
-    const res = await fetch(`${API_BASE_URL}/telegram-send-code`, {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-restore-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId, sessionString }),
+      }, 30000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error('restoreSession error:', body);
+        return false;
+      }
+
+      const data = (await res.json()) as { success: boolean; valid: boolean };
+      
+      if (data.success && data.valid) {
+        this.currentUserId = userId;
+        console.log('Session restored successfully');
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Failed to restore session:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send verification code to phone number
+   */
+  async sendCode(phoneNumber: string): Promise<{ phoneCodeHash: string; sessionString: string }> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
+    }
+
+    const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-send-code`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({
         userId: phoneNumber,
         phoneNumber,
       }),
-    });
+    }, 30000);
 
     if (!res.ok) {
       const body = await res.text();
@@ -72,9 +191,10 @@ export class TelegramClient {
       throw new Error('Failed to send verification code');
     }
 
-    const data = (await res.json()) as { phoneCodeHash: string };
-    // Remember userId for subsequent calls
+    const data = (await res.json()) as { phoneCodeHash: string; sessionString: string };
+    // Remember userId and session string for subsequent calls
     this.currentUserId = phoneNumber;
+    this.authSessionString = data.sessionString;
     return data;
   }
 
@@ -85,25 +205,29 @@ export class TelegramClient {
     phoneNumber: string,
     phoneCodeHash: string,
     code: string
-  ): Promise<{ success: boolean; user?: any }> {
-    if (!API_BASE_URL || !SUPABASE_ANON_KEY) {
-      throw new Error('API base URL or Supabase anon key is not configured');
+  ): Promise<{ success: boolean; user?: any; requires2FA?: boolean; hint?: string }> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
     }
 
-    const res = await fetch(`${API_BASE_URL}/telegram-sign-in`, {
+    // Must have session string from sendCode
+    if (!this.authSessionString) {
+      throw new Error('No auth session found. Please call sendCode first.');
+    }
+
+    const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-sign-in`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({
         userId: phoneNumber,
         phoneNumber,
         phoneCodeHash,
         code,
+        sessionString: this.authSessionString,
       }),
-    });
+    }, 30000);
 
     if (!res.ok) {
       const body = await res.text();
@@ -111,35 +235,106 @@ export class TelegramClient {
       throw new Error('Failed to verify code');
     }
 
+    const data = await res.json();
+
+    // Check if 2FA is required
+    if (data.requires2FA) {
+      // Keep session string for 2FA
+      this.authSessionString = data.sessionString;
+      return {
+        success: false,
+        requires2FA: true,
+        hint: data.hint || '2FA password required',
+      };
+    }
+
     this.currentUserId = phoneNumber;
+    
+    // Get the authenticated sessionString from backend response
+    const sessionString = data.sessionString || '';
+    
+    // Save session to persistent storage (userId + sessionString)
+    await this.saveSession(phoneNumber, sessionString);
+    
+    // Clear auth session after successful sign in
+    this.authSessionString = null;
 
     return { success: true, user: { id: phoneNumber, phoneNumber } };
   }
 
   /**
-   * Get list of all chats
+   * Complete sign in with 2FA password
    */
-  async getChats(): Promise<TelegramChat[]> {
-    if (!API_BASE_URL || !SUPABASE_ANON_KEY) {
-      throw new Error('API base URL or Supabase anon key is not configured');
+  async signInWith2FA(
+    phoneNumber: string,
+    password: string
+  ): Promise<{ success: boolean; user?: any }> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
+    }
+
+    // Must have session string from signIn
+    if (!this.authSessionString) {
+      throw new Error('No auth session found. Please call signIn first.');
+    }
+
+    const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-sign-in-2fa`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: phoneNumber,
+        phoneNumber,
+        password,
+        sessionString: this.authSessionString,
+      }),
+    }, 30000);
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('signInWith2FA error:', body);
+      throw new Error('Failed to verify 2FA password');
+    }
+
+    const data = await res.json();
+    this.currentUserId = phoneNumber;
+    
+    // Get the authenticated sessionString from backend response
+    const sessionString = data.sessionString || '';
+    
+    // Save session to persistent storage (userId + sessionString)
+    await this.saveSession(phoneNumber, sessionString);
+    
+    // Clear auth session after successful sign in
+    this.authSessionString = null;
+
+    return { success: true, user: { id: phoneNumber, phoneNumber } };
+  }
+
+  /**
+   * Get list of all chats (quick version - without message counts)
+   * This is fast and should be called first
+   */
+  async getChatsQuick(): Promise<TelegramChat[]> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
     }
     if (!this.currentUserId) {
       throw new Error('Not authenticated');
     }
 
-    const res = await fetch(`${API_BASE_URL}/telegram-get-chats`, {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-get-chats-quick`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ userId: this.currentUserId }),
-    });
+      body: JSON.stringify({ userId: this.currentUserId, limit: 0 }),
+    }, 60000); // 1 minute timeout
 
     if (!res.ok) {
       const body = await res.text();
-      console.error('getChats error:', body);
+      console.error('getChatsQuick error:', body);
       throw new Error('Failed to load chats');
     }
 
@@ -150,6 +345,7 @@ export class TelegramClient {
         type: string;
         lastMessage: { id: number; text: string | null; date: string | null } | null;
         unreadCount: number;
+        avatar?: string;
       }[];
     };
 
@@ -164,9 +360,125 @@ export class TelegramClient {
           : 'private',
       lastMessage: chat.lastMessage?.text || undefined,
       timestamp: chat.lastMessage?.date || undefined,
-      avatar: undefined,
+      avatar: chat.avatar,
+      messageCount: chat.unreadCount, // Will be -1 indicating not yet counted
+    }));
+  }
+
+  /**
+   * Get list of all chats (full version with message counting - slow)
+   */
+  async getChats(): Promise<TelegramChat[]> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
+    }
+    if (!this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    // Increase timeout to 5 minutes because counting all messages takes time
+    const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-get-chats`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId: this.currentUserId, limit: 0 }),
+    }, 300000); // 5 minutes timeout
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('getChats error:', body);
+      throw new Error('Failed to load chats');
+    }
+
+    const data = (await res.json()) as {
+      chats: {
+        id: string;
+        title: string | null;
+        type: string;
+        lastMessage: { id: number; text: string | null; date: string | null } | null;
+        unreadCount: number;
+        avatar?: string;
+      }[];
+    };
+
+    return data.chats.map((chat) => ({
+      id: chat.id,
+      name: chat.title || 'Unknown chat',
+      type:
+        chat.type === 'channel'
+          ? 'channel'
+          : chat.type === 'group'
+          ? 'group'
+          : 'private',
+      lastMessage: chat.lastMessage?.text || undefined,
+      timestamp: chat.lastMessage?.date || undefined,
+      avatar: chat.avatar,
       messageCount: chat.unreadCount,
     }));
+  }
+
+  /**
+   * Count messages in a specific chat
+   */
+  async getChatMessageCount(chatId: string): Promise<number> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
+    }
+    if (!this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-count-messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId: this.currentUserId, chatId }),
+    }, 10000); // Reduced to 10 seconds (backend has 5s timeout)
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('getChatMessageCount error:', body);
+      return 0;
+    }
+
+    const data = (await res.json()) as { chatId: string; count: number };
+    return data.count;
+  }
+
+  /**
+   * Get profile photo for a chat as base64 data URL
+   */
+  async getChatProfilePhoto(chatId: string): Promise<string | null> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
+    }
+    if (!this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-get-profile-photo`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: this.currentUserId, chatId }),
+      }, 10000); // 10 second timeout
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error('getChatProfilePhoto error:', body);
+        return null;
+      }
+
+      const data = (await res.json()) as { chatId: string; photo: string | null };
+      return data.photo;
+    } catch (error) {
+      console.error('Failed to get profile photo:', error);
+      return null;
+    }
   }
 
   /**
@@ -176,26 +488,24 @@ export class TelegramClient {
     chatId: string,
     limit: number = 100
   ): Promise<TelegramMessage[]> {
-    if (!API_BASE_URL || !SUPABASE_ANON_KEY) {
-      throw new Error('API base URL or Supabase anon key is not configured');
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
     }
     if (!this.currentUserId) {
       throw new Error('Not authenticated');
     }
 
-    const res = await fetch(`${API_BASE_URL}/telegram-get-messages`, {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-get-messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({
         userId: this.currentUserId,
         chatId,
         limit,
       }),
-    });
+    }, 30000);
 
     if (!res.ok) {
       const body = await res.text();
@@ -223,26 +533,24 @@ export class TelegramClient {
     chatId: string,
     messageIds: number[]
   ): Promise<{ success: boolean; deletedCount: number }> {
-    if (!API_BASE_URL || !SUPABASE_ANON_KEY) {
-      throw new Error('API base URL or Supabase anon key is not configured');
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
     }
     if (!this.currentUserId) {
       throw new Error('Not authenticated');
     }
 
-    const res = await fetch(`${API_BASE_URL}/telegram-delete-messages`, {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-delete-messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({
         userId: this.currentUserId,
         chatId,
         messageIds,
       }),
-    });
+    }, 30000);
 
     if (!res.ok) {
       const body = await res.text();
@@ -295,10 +603,52 @@ export class TelegramClient {
   }
 
   /**
-   * Disconnect from Telegram
+   * Logout from Telegram (clears session on both client and server)
+   */
+  async logout(): Promise<boolean> {
+    if (!API_BASE_URL) {
+      console.warn('API base URL not configured, clearing local session only');
+      await this.clearSession();
+      return true;
+    }
+
+    if (!this.currentUserId) {
+      console.warn('Not authenticated, clearing local session only');
+      await this.clearSession();
+      return true;
+    }
+
+    try {
+      // Call backend to clear server-side session
+      const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: this.currentUserId }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error('logout error:', body);
+      }
+
+      // Always clear local session regardless of server response
+      await this.clearSession();
+      return true;
+    } catch (error) {
+      console.error('Failed to logout:', error);
+      // Clear local session even if server call fails
+      await this.clearSession();
+      return true;
+    }
+  }
+
+  /**
+   * Disconnect from Telegram (alias for logout)
    */
   async disconnect(): Promise<void> {
-    this.currentUserId = null;
+    await this.logout();
   }
 }
 

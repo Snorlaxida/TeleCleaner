@@ -1,12 +1,13 @@
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 
 interface Chat {
   id: string;
   name: string;
   lastMessage: string;
   timestamp: string;
-  avatar: string;
-  messageCount: number;
+  avatar?: string; // Emoji, initial letter, or base64 data URL
+  messageCount: number; // Total user's messages in this chat (-1 means loading)
+  avatarLoading?: boolean; // True if avatar is being loaded
 }
 
 interface ChatListItemProps {
@@ -16,6 +17,26 @@ interface ChatListItemProps {
 }
 
 export default function ChatListItem({ chat, isSelected, onToggle }: ChatListItemProps) {
+  // Generate background color based on chat name for variety
+  const getAvatarColor = (name: string): string => {
+    const colors = [
+      'bg-blue-400',
+      'bg-green-400', 
+      'bg-purple-400',
+      'bg-pink-400',
+      'bg-orange-400',
+      'bg-teal-400',
+      'bg-indigo-400',
+      'bg-red-400',
+    ];
+    const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[hash % colors.length];
+  };
+
+  const isBase64Image = chat.avatar && chat.avatar.startsWith('data:image');
+  const isEmoji = chat.avatar && !isBase64Image && /[\u{1F300}-\u{1F9FF}]/u.test(chat.avatar);
+  const bgColor = isEmoji || isBase64Image ? 'bg-telegram-lightBlue' : getAvatarColor(chat.name);
+
   return (
     <TouchableOpacity
       className="flex-row items-center px-4 py-3 bg-white active:bg-gray-50"
@@ -31,8 +52,20 @@ export default function ChatListItem({ chat, isSelected, onToggle }: ChatListIte
       </View>
 
       {/* Avatar */}
-      <View className="w-12 h-12 rounded-full bg-telegram-lightBlue items-center justify-center mr-3">
-        <Text className="text-2xl">{chat.avatar}</Text>
+      <View className={`w-12 h-12 rounded-full items-center justify-center mr-3 overflow-hidden ${bgColor}`}>
+        {chat.avatarLoading ? (
+          <ActivityIndicator size="small" color="#0088cc" />
+        ) : isBase64Image ? (
+          <Image 
+            source={{ uri: chat.avatar }} 
+            className="w-12 h-12"
+            resizeMode="cover"
+          />
+        ) : (
+          <Text className={isEmoji ? "text-2xl" : "text-xl font-bold text-white"}>
+            {chat.avatar || '💬'}
+          </Text>
+        )}
       </View>
 
       {/* Chat Info */}
@@ -47,9 +80,21 @@ export default function ChatListItem({ chat, isSelected, onToggle }: ChatListIte
           <Text className="text-sm text-gray-600 flex-1" numberOfLines={1}>
             {chat.lastMessage}
           </Text>
-          <Text className="text-xs text-gray-400 ml-2">
-            {chat.messageCount} msgs
-          </Text>
+          {chat.messageCount === -1 ? (
+            <View className="flex-row items-center ml-2">
+              <Text className="text-xs text-gray-500 mr-1">Your messages:</Text>
+              <ActivityIndicator size="small" color="#0088cc" />
+            </View>
+          ) : chat.messageCount > 0 ? (
+            <View className="flex-row items-center ml-2">
+              <Text className="text-xs text-gray-500 mr-1">Your messages:</Text>
+              <View className="bg-telegram-blue rounded-full px-2 py-0.5">
+                <Text className="text-xs text-white font-semibold">
+                  {chat.messageCount > 99 ? '99+' : chat.messageCount}
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </View>
       </View>
     </TouchableOpacity>
