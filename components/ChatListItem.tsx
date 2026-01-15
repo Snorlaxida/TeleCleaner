@@ -6,7 +6,7 @@ interface Chat {
   lastMessage: string;
   timestamp: string;
   avatar?: string; // Emoji, initial letter, or base64 data URL
-  messageCount: number; // Total user's messages in this chat (-1 means loading)
+  messageCount: number; // Total user's messages in this chat (-1 means loading, -2 means private chat shows "?")
   avatarLoading?: boolean; // True if avatar is being loaded
 }
 
@@ -85,12 +85,21 @@ export default function ChatListItem({ chat, isSelected, onToggle }: ChatListIte
               <Text className="text-xs text-gray-500 mr-1">Your messages:</Text>
               <ActivityIndicator size="small" color="#0088cc" />
             </View>
-          ) : chat.messageCount > 0 ? (
+          ) : chat.messageCount === -2 ? (
             <View className="flex-row items-center ml-2">
               <Text className="text-xs text-gray-500 mr-1">Your messages:</Text>
-              <View className="bg-telegram-blue rounded-full px-2 py-0.5">
+              <View className="bg-gray-400 rounded-full px-2 py-0.5">
                 <Text className="text-xs text-white font-semibold">
-                  {chat.messageCount > 99 ? '99+' : chat.messageCount}
+                  ?
+                </Text>
+              </View>
+            </View>
+          ) : chat.messageCount >= 0 ? (
+            <View className="flex-row items-center ml-2">
+              <Text className="text-xs text-gray-500 mr-1">Your messages:</Text>
+              <View className={`${chat.messageCount === 0 ? 'bg-green-500' : 'bg-telegram-blue'} rounded-full px-2 py-0.5`}>
+                <Text className="text-xs text-white font-semibold">
+                  {chat.messageCount}
                 </Text>
               </View>
             </View>

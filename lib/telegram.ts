@@ -58,6 +58,10 @@ export interface TelegramMessage {
 export class TelegramClient {
   private currentUserId: string | null = null; // we use phoneNumber as userId for now
   private authSessionString: string | null = null; // session string from sendCode for signIn
+  private websocket: WebSocket | null = null;
+  private messageCountUpdateCallbacks: Set<(data: { chatId: string; count: number }) => void> = new Set();
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private isSubscribed: boolean = false;
 
   constructor() {
     if (!API_BASE_URL) {
@@ -420,8 +424,10 @@ export class TelegramClient {
 
   /**
    * Count messages in a specific chat
+   * For groups/channels: returns exact count
+   * For private chats: returns -2 (displayed as "?" in UI)
    */
-  async getChatMessageCount(chatId: string): Promise<number> {
+  async getChatMessageCount(chatId: string, isPrivateChat: boolean = false): Promise<number> {
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
     }
@@ -434,7 +440,7 @@ export class TelegramClient {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ userId: this.currentUserId, chatId }),
+      body: JSON.stringify({ userId: this.currentUserId, chatId, isPrivateChat }),
     }, 10000); // Reduced to 10 seconds (backend has 5s timeout)
 
     if (!res.ok) {
@@ -479,6 +485,38 @@ export class TelegramClient {
       console.error('Failed to get profile photo:', error);
       return null;
     }
+  }
+
+  /**
+   * Get current user information
+   */
+  async getMe(): Promise<{ phone?: string; username?: string }> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured');
+    }
+    if (!this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-get-me`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId: this.currentUserId }),
+    }, 10000);
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('getMe error:', body);
+      throw new Error('Failed to get user info');
+    }
+
+    const data = (await res.json()) as { id: string; phone?: string; username?: string };
+    return {
+      phone: data.phone,
+      username: data.username,
+    };
   }
 
   /**
@@ -527,11 +565,16 @@ export class TelegramClient {
   }
 
   /**
-   * Delete messages based on time filter
+   * Delete messages based on time filter or direct message IDs
    */
   async deleteMessages(
     chatId: string,
-    messageIds: number[]
+    options: {
+      timeRange?: 'last_day' | 'last_week' | 'all' | 'custom';
+      startDate?: Date;
+      endDate?: Date;
+      messageIds?: number[];
+    }
   ): Promise<{ success: boolean; deletedCount: number }> {
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
@@ -548,9 +591,12 @@ export class TelegramClient {
       body: JSON.stringify({
         userId: this.currentUserId,
         chatId,
-        messageIds,
+        messageIds: options.messageIds,
+        timeRange: options.timeRange,
+        startDate: options.startDate?.toISOString(),
+        endDate: options.endDate?.toISOString(),
       }),
-    }, 30000);
+    }, 60000); // 60 second timeout for potentially large deletions
 
     if (!res.ok) {
       const body = await res.text();
@@ -606,6 +652,10 @@ export class TelegramClient {
    * Logout from Telegram (clears session on both client and server)
    */
   async logout(): Promise<boolean> {
+    // Disconnect WebSocket first
+    this.disconnectWebSocket();
+    this.isSubscribed = false;
+
     if (!API_BASE_URL) {
       console.warn('API base URL not configured, clearing local session only');
       await this.clearSession();
@@ -619,7 +669,7 @@ export class TelegramClient {
     }
 
     try {
-      // Call backend to clear server-side session
+      // Call backend to clear server-side session (which also unsubscribes)
       const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-logout`, {
         method: 'POST',
         headers: {
@@ -649,6 +699,212 @@ export class TelegramClient {
    */
   async disconnect(): Promise<void> {
     await this.logout();
+  }
+
+  /**
+   * Subscribe to real-time updates via WebSocket
+   */
+  async subscribeToUpdates(): Promise<boolean> {
+    if (!API_BASE_URL) {
+      console.warn('API base URL not configured');
+      return false;
+    }
+
+    if (!this.currentUserId) {
+      console.warn('Not authenticated');
+      return false;
+    }
+
+    try {
+      // First, subscribe on the server via REST API
+      const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-subscribe-updates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: this.currentUserId }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error('subscribeToUpdates error:', body);
+        return false;
+      }
+
+      this.isSubscribed = true;
+
+      // Then connect to WebSocket
+      this.connectWebSocket();
+      return true;
+    } catch (error) {
+      console.error('Failed to subscribe to updates:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Unsubscribe from real-time updates
+   */
+  async unsubscribeFromUpdates(): Promise<boolean> {
+    if (!API_BASE_URL) {
+      console.warn('API base URL not configured');
+      return false;
+    }
+
+    if (!this.currentUserId) {
+      console.warn('Not authenticated');
+      return false;
+    }
+
+    try {
+      // Disconnect WebSocket
+      this.disconnectWebSocket();
+
+      // Unsubscribe on the server
+      const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-unsubscribe-updates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: this.currentUserId }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error('unsubscribeFromUpdates error:', body);
+        return false;
+      }
+
+      this.isSubscribed = false;
+      return true;
+    } catch (error) {
+      console.error('Failed to unsubscribe from updates:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Connect to WebSocket for real-time updates
+   */
+  private connectWebSocket(): void {
+    if (!API_BASE_URL || !this.currentUserId) {
+      return;
+    }
+
+    // Close existing connection if any
+    if (this.websocket) {
+      this.websocket.close();
+    }
+
+    // Convert http://localhost:3000 to ws://localhost:3000
+    const wsUrl = API_BASE_URL.replace(/^http/, 'ws');
+    const encodedUserId = encodeURIComponent(this.currentUserId);
+    const url = `${wsUrl}/ws/updates?userId=${encodedUserId}`;
+
+    console.log('Connecting to WebSocket:', url);
+
+    try {
+      this.websocket = new WebSocket(url);
+
+      this.websocket.onopen = () => {
+        console.log('WebSocket connected');
+        
+        // Clear reconnect timeout if any
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+          this.reconnectTimeout = null;
+        }
+
+        // Start ping interval to keep connection alive
+        const pingInterval = setInterval(() => {
+          if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.websocket.send(JSON.stringify({ type: 'ping' }));
+          } else {
+            clearInterval(pingInterval);
+          }
+        }, 30000); // Ping every 30 seconds
+      };
+
+      this.websocket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'messageCountUpdate') {
+            console.log('Received message count update:', data);
+            // Notify all registered callbacks
+            this.messageCountUpdateCallbacks.forEach(callback => {
+              callback({
+                chatId: data.chatId,
+                count: data.count,
+              });
+            });
+          } else if (data.type === 'connected') {
+            console.log('WebSocket connection confirmed:', data.message);
+          } else if (data.type === 'pong') {
+            console.log('Pong received');
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+
+      this.websocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      this.websocket.onclose = () => {
+        console.log('WebSocket disconnected');
+        this.websocket = null;
+
+        // Attempt to reconnect if subscribed
+        if (this.isSubscribed && this.currentUserId) {
+          console.log('Attempting to reconnect in 5 seconds...');
+          this.reconnectTimeout = setTimeout(() => {
+            this.connectWebSocket();
+          }, 5000);
+        }
+      };
+    } catch (error) {
+      console.error('Failed to create WebSocket:', error);
+    }
+  }
+
+  /**
+   * Disconnect WebSocket
+   */
+  private disconnectWebSocket(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    if (this.websocket) {
+      this.websocket.close();
+      this.websocket = null;
+    }
+
+    console.log('WebSocket disconnected');
+  }
+
+  /**
+   * Register a callback for message count updates
+   */
+  onMessageCountUpdate(callback: (data: { chatId: string; count: number }) => void): void {
+    this.messageCountUpdateCallbacks.add(callback);
+  }
+
+  /**
+   * Unregister a callback for message count updates
+   */
+  offMessageCountUpdate(callback: (data: { chatId: string; count: number }) => void): void {
+    this.messageCountUpdateCallbacks.delete(callback);
+  }
+
+  /**
+   * Check if WebSocket is connected
+   */
+  isWebSocketConnected(): boolean {
+    return this.websocket !== null && this.websocket.readyState === WebSocket.OPEN;
   }
 }
 

@@ -1,4 +1,4 @@
-import { View, Text, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import ChatListItem from '@/components/ChatListItem';
@@ -15,10 +15,58 @@ export interface CustomDateRange {
 export default function ChatsScreen() {
   const router = useRouter();
   const [chats, setChats] = useState<TelegramChat[]>([]);
+  const [filteredChats, setFilteredChats] = useState<TelegramChat[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingChats, setIsLoadingChats] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const [showDeletionModal, setShowDeletionModal] = useState(false);
+
+  // Filter chats based on search query
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredChats(chats);
+    } else {
+      const query = searchQuery.toLowerCase();
+      const filtered = chats.filter(chat =>
+        chat.name.toLowerCase().includes(query)
+      );
+      setFilteredChats(filtered);
+    }
+  }, [searchQuery, chats]);
+
+  // Setup real-time message count updates
+  useEffect(() => {
+    const handleMessageCountUpdate = (data: { chatId: string; count: number }) => {
+      console.log('📬 Real-time update received:', data);
+      
+      // Update chat message count in state
+      setChats(prevChats => {
+        const updatedChats = [...prevChats];
+        const index = updatedChats.findIndex(c => c.id === data.chatId);
+        
+        if (index !== -1) {
+          updatedChats[index] = {
+            ...updatedChats[index],
+            messageCount: data.count,
+          };
+          console.log(`✅ Updated chat ${data.chatId} count to ${data.count}`);
+        } else {
+          console.warn(`⚠️ Chat ${data.chatId} not found in state`);
+        }
+        
+        return updatedChats;
+      });
+    };
+
+    // Register callback
+    telegramClient.onMessageCountUpdate(handleMessageCountUpdate);
+
+    // Cleanup: unregister callback when component unmounts
+    return () => {
+      telegramClient.offMessageCountUpdate(handleMessageCountUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     const loadChats = async () => {
@@ -38,15 +86,17 @@ export default function ChatsScreen() {
 
         // Step 2: Load message counts AND profile photos for each chat incrementally
         // Process in batches to avoid overwhelming the API
-        const batchSize = 5; // Process 5 chats at a time (increased from 3)
+        const batchSize = 15; // Process 15 chats at a time for faster loading
         for (let i = 0; i < result.length; i += batchSize) {
           const batch = result.slice(i, i + batchSize);
           
           // Load both counts and avatars for this batch in parallel
           const dataPromises = batch.map(async (chat) => {
+            const isPrivateChat = chat.type === 'private';
+            
             // Run count and photo fetch in parallel for each chat
             const [count, photo] = await Promise.all([
-              telegramClient.getChatMessageCount(chat.id).catch(error => {
+              telegramClient.getChatMessageCount(chat.id, isPrivateChat).catch(error => {
                 console.error(`Failed to count messages for chat ${chat.id}:`, error);
                 return 0;
               }),
@@ -82,6 +132,15 @@ export default function ChatsScreen() {
             return updatedChats;
           });
         }
+
+        // Step 3: Subscribe to real-time updates
+        console.log('Subscribing to real-time updates...');
+        const subscribed = await telegramClient.subscribeToUpdates();
+        if (subscribed) {
+          console.log('✅ Subscribed to real-time updates');
+        } else {
+          console.warn('⚠️ Failed to subscribe to real-time updates');
+        }
       } catch (error) {
         console.error(error);
         Alert.alert('Error', 'Failed to load chats from Telegram.');
@@ -90,6 +149,13 @@ export default function ChatsScreen() {
     };
 
     loadChats();
+
+    // Cleanup: unsubscribe when component unmounts
+    return () => {
+      telegramClient.unsubscribeFromUpdates().catch(err => {
+        console.error('Error unsubscribing from updates:', err);
+      });
+    };
   }, []);
 
   const toggleChatSelection = (chatId: string) => {
@@ -139,26 +205,41 @@ export default function ChatsScreen() {
   const processDeletion = async (option: DeletionOption, customRange?: CustomDateRange) => {
     try {
       setIsProcessing(true);
+      let totalDeleted = 0;
 
+      // Process each selected chat
       for (const chatId of selectedChats) {
-        const messages = await telegramClient.getMessages(chatId);
-        const filtered = telegramClient.filterMessagesByTime(
-          messages,
-          option,
-          customRange
-            ? {
-                startDate: customRange.startDate,
-                endDate: customRange.endDate,
-              }
-            : undefined
-        );
-        const messageIds = filtered.map((m) => m.id);
-        if (messageIds.length > 0) {
-          await telegramClient.deleteMessages(chatId, messageIds);
+        const result = await telegramClient.deleteMessages(chatId, {
+          timeRange: option,
+          startDate: customRange?.startDate,
+          endDate: customRange?.endDate,
+        });
+        totalDeleted += result.deletedCount;
+
+        // Update message count for this chat
+        const chatIndex = chats.findIndex(c => c.id === chatId);
+        if (chatIndex !== -1) {
+          const chat = chats[chatIndex];
+          const isPrivateChat = chat.type === 'private';
+          
+          // Refresh count from server
+          try {
+            const newCount = await telegramClient.getChatMessageCount(chatId, isPrivateChat);
+            setChats(prevChats => {
+              const updated = [...prevChats];
+              updated[chatIndex] = {
+                ...updated[chatIndex],
+                messageCount: newCount,
+              };
+              return updated;
+            });
+          } catch (error) {
+            console.error(`Failed to update count for chat ${chatId}:`, error);
+          }
         }
       }
 
-      Alert.alert('Success', 'Messages deleted successfully!');
+      Alert.alert('Success', `Deleted ${totalDeleted} messages successfully!`);
       setSelectedChats(new Set());
     } catch (error) {
       console.error(error);
@@ -169,7 +250,7 @@ export default function ChatsScreen() {
   };
 
   const selectAllChats = () => {
-    const allChatIds = new Set(chats.map(chat => chat.id));
+    const allChatIds = new Set(filteredChats.map(chat => chat.id));
     setSelectedChats(allChatIds);
   };
 
@@ -179,19 +260,39 @@ export default function ChatsScreen() {
 
   return (
     <View className="flex-1 bg-white">
+      {/* Search Bar */}
+      <View className="bg-gray-50 px-4 pt-3 pb-2 border-b border-gray-200">
+        <View className="bg-white rounded-lg border border-gray-300 flex-row items-center px-3 py-2">
+          <Text className="text-gray-400 mr-2">🔍</Text>
+          <TextInput
+            className="flex-1 text-base text-gray-900"
+            placeholder="Search chats..."
+            placeholderTextColor="#9CA3AF"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            editable={!isLoadingChats}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Text className="text-gray-400 text-lg">✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       {/* Select All Button */}
       <View className="bg-gray-50 px-4 py-3 border-b border-gray-200">
         <TouchableOpacity
           className="bg-telegram-blue py-3 rounded-lg"
-          onPress={selectedChats.size === chats.length ? deselectAllChats : selectAllChats}
-          disabled={chats.length === 0 || isLoadingChats}
+          onPress={selectedChats.size === filteredChats.length ? deselectAllChats : selectAllChats}
+          disabled={filteredChats.length === 0 || isLoadingChats}
         >
           <Text className="text-white text-center font-semibold">
             {isLoadingChats
               ? 'Loading...'
-              : chats.length === 0
+              : filteredChats.length === 0
               ? 'No chats'
-              : selectedChats.size === chats.length
+              : selectedChats.size === filteredChats.length
               ? '✓ Deselect All'
               : 'Select All Chats'}
           </Text>
@@ -227,7 +328,7 @@ export default function ChatsScreen() {
         </View>
       ) : (
         <FlatList
-          data={chats}
+          data={filteredChats}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <ChatListItem

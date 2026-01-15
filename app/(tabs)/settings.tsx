@@ -1,9 +1,36 @@
-import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { telegramClient } from '@/lib/telegram';
+import Constants from 'expo-constants';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const [userInfo, setUserInfo] = useState<{ phone?: string; username?: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Get app version from package.json via expo-constants
+  const appVersion = Constants.expoConfig?.version || '1.0.0';
+
+  useEffect(() => {
+    loadUserInfo();
+  }, []);
+
+  const loadUserInfo = async () => {
+    try {
+      setIsLoading(true);
+      // Get user info from backend
+      const session = await telegramClient.loadSession();
+      if (session) {
+        const info = await telegramClient.getMe();
+        setUserInfo(info);
+      }
+    } catch (error) {
+      console.error('Failed to load user info:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -54,6 +81,15 @@ export default function SettingsScreen() {
     </TouchableOpacity>
   );
 
+  if (isLoading) {
+    return (
+      <View className="flex-1 bg-gray-100 items-center justify-center">
+        <ActivityIndicator size="large" color="#0088cc" />
+        <Text className="mt-4 text-gray-500">Loading settings...</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView className="flex-1 bg-gray-100">
       {/* Account Section */}
@@ -63,72 +99,30 @@ export default function SettingsScreen() {
         </Text>
         <SettingItem
           title="Phone Number"
-          subtitle="+1 234 567 8900"
-          onPress={() => Alert.alert('Phone Number', 'Manage your phone number')}
+          subtitle={userInfo?.phone ? `+${userInfo.phone}` : 'Not available'}
+          onPress={() => {}}
         />
         <SettingItem
-          title="Privacy & Security"
-          subtitle="Manage your privacy settings"
-          onPress={() => Alert.alert('Privacy', 'Privacy settings')}
-        />
-      </View>
-
-      {/* App Settings */}
-      <View className="mt-6">
-        <Text className="text-sm font-semibold text-gray-500 px-4 mb-2">
-          APP SETTINGS
-        </Text>
-        <SettingItem
-          title="Notifications"
-          subtitle="Manage notification preferences"
-          onPress={() => Alert.alert('Notifications', 'Notification settings')}
-        />
-        <SettingItem
-          title="Data & Storage"
-          subtitle="Network usage and storage settings"
-          onPress={() => Alert.alert('Data', 'Data settings')}
-        />
-      </View>
-
-      {/* Support */}
-      <View className="mt-6">
-        <Text className="text-sm font-semibold text-gray-500 px-4 mb-2">
-          SUPPORT
-        </Text>
-        <SettingItem
-          title="Help & FAQ"
-          subtitle="Get help and find answers"
-          onPress={() => Alert.alert('Help', 'Help center')}
-        />
-        <SettingItem
-          title="Send Feedback"
-          subtitle="Share your thoughts with us"
-          onPress={() => Alert.alert('Feedback', 'Send us your feedback')}
+          title="Username"
+          subtitle={userInfo?.username ? `@${userInfo.username}` : 'No username'}
+          onPress={() => {}}
         />
       </View>
 
       {/* About */}
-      <View className="mt-6 mb-6">
+      <View className="mt-6">
         <Text className="text-sm font-semibold text-gray-500 px-4 mb-2">
           ABOUT
         </Text>
         <SettingItem
           title="Version"
-          subtitle="1.0.0"
+          subtitle={appVersion}
           onPress={() => {}}
-        />
-        <SettingItem
-          title="Terms of Service"
-          onPress={() => Alert.alert('Terms', 'Terms of Service')}
-        />
-        <SettingItem
-          title="Privacy Policy"
-          onPress={() => Alert.alert('Privacy', 'Privacy Policy')}
         />
       </View>
 
       {/* Logout */}
-      <View className="mb-8">
+      <View className="mt-6 mb-8">
         <SettingItem
           title="Logout"
           onPress={handleLogout}
@@ -139,7 +133,7 @@ export default function SettingsScreen() {
       {/* Footer */}
       <View className="items-center pb-8">
         <Text className="text-gray-400 text-sm">
-          TeleCleaner v1.0.0
+          TeleCleaner v{appVersion}
         </Text>
         <Text className="text-gray-400 text-xs mt-1">
           Made with ❤️ for Telegram users
