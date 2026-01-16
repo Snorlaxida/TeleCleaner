@@ -1,8 +1,9 @@
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useRef } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { telegramClient } from '@/lib/telegram';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function VerifyCodeScreen() {
   const router = useRouter();
@@ -12,6 +13,9 @@ export default function VerifyCodeScreen() {
   }>();
   const [code, setCode] = useState(['', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
   const handleCodeChange = (text: string, index: number) => {
@@ -38,7 +42,8 @@ export default function VerifyCodeScreen() {
 
   const verifyCode = async (fullCode: string) => {
     if (!phoneNumber || !phoneCodeHash) {
-      Alert.alert('Error', 'Missing phone number or code hash.');
+      setErrorMessage('Missing phone number or code hash.');
+      setShowErrorDialog(true);
       return;
     }
 
@@ -58,7 +63,8 @@ export default function VerifyCodeScreen() {
       }
     } catch (error) {
       console.error(error);
-      Alert.alert('Invalid Code', 'The verification code you entered is incorrect.');
+      setErrorMessage('The verification code you entered is incorrect.');
+      setShowErrorDialog(true);
       setCode(['', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally {
@@ -67,7 +73,7 @@ export default function VerifyCodeScreen() {
   };
 
   const handleResendCode = async () => {
-    Alert.alert('Code Sent', 'A new verification code has been sent to your phone.');
+    setShowSuccessDialog(true);
   };
 
   return (
@@ -120,6 +126,28 @@ export default function VerifyCodeScreen() {
           </View>
         )}
       </View>
+
+      {/* Error Dialog */}
+      <ConfirmDialog
+        visible={showErrorDialog}
+        title="Invalid Code"
+        message={errorMessage}
+        onClose={() => setShowErrorDialog(false)}
+        onConfirm={() => setShowErrorDialog(false)}
+        confirmText="OK"
+        cancelText=""
+      />
+
+      {/* Success Dialog */}
+      <ConfirmDialog
+        visible={showSuccessDialog}
+        title="Code Sent"
+        message="A new verification code has been sent to your phone."
+        onClose={() => setShowSuccessDialog(false)}
+        onConfirm={() => setShowSuccessDialog(false)}
+        confirmText="OK"
+        cancelText=""
+      />
     </KeyboardAvoidingView>
   );
 }

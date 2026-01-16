@@ -1,17 +1,21 @@
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { telegramClient } from '@/lib/telegram';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function PhoneAuthScreen() {
   const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleSendCode = async () => {
     if (!phoneNumber || phoneNumber.length < 10) {
-      Alert.alert('Invalid Phone Number', 'Please enter a valid phone number');
+      setErrorMessage('Please enter a valid phone number');
+      setShowErrorDialog(true);
       return;
     }
 
@@ -26,7 +30,8 @@ export default function PhoneAuthScreen() {
       });
     } catch (error) {
       console.error(error);
-      Alert.alert('Error', 'Failed to send verification code. Please try again.');
+      setErrorMessage('Failed to send verification code. Please try again.');
+      setShowErrorDialog(true);
     } finally {
       setIsLoading(false);
     }
@@ -92,6 +97,17 @@ export default function PhoneAuthScreen() {
           </Text>
         </View>
       </View>
+
+      {/* Error Dialog */}
+      <ConfirmDialog
+        visible={showErrorDialog}
+        title="Error"
+        message={errorMessage}
+        onClose={() => setShowErrorDialog(false)}
+        onConfirm={() => setShowErrorDialog(false)}
+        confirmText="OK"
+        cancelText=""
+      />
     </KeyboardAvoidingView>
   );
 }

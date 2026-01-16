@@ -1,9 +1,9 @@
-import { View, Text, FlatList, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, RefreshControl } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import ChatListItem from '@/components/ChatListItem';
-import DeletionOptionsModal from '@/components/DeletionOptionsModal';
 import { telegramClient, TelegramChat } from '@/lib/telegram';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export type DeletionOption = 'last_day' | 'last_week' | 'all' | 'custom';
 
@@ -18,9 +18,10 @@ export default function ChatsScreen() {
   const [filteredChats, setFilteredChats] = useState<TelegramChat[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingChats, setIsLoadingChats] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
-  const [showDeletionModal, setShowDeletionModal] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Filter chats based on search query
   useEffect(() => {
@@ -143,7 +144,8 @@ export default function ChatsScreen() {
         }
       } catch (error) {
         console.error(error);
-        Alert.alert('Error', 'Failed to load chats from Telegram.');
+        setErrorMessage('Failed to load chats from Telegram.');
+        setShowErrorDialog(true);
         setIsLoadingChats(false);
       }
     };
@@ -168,87 +170,6 @@ export default function ChatsScreen() {
     setSelectedChats(newSelection);
   };
 
-  const handleDeleteMessages = (option: DeletionOption, customRange?: CustomDateRange) => {
-    const chatCount = selectedChats.size;
-    let optionText = '';
-    
-    if (option === 'custom' && customRange) {
-      const startStr = customRange.startDate.toLocaleDateString();
-      const endStr = customRange.endDate.toLocaleDateString();
-      optionText = `from ${startStr} to ${endStr}`;
-    } else {
-      optionText = option === 'last_day' ? 'from the last day' 
-        : option === 'last_week' ? 'from the last week' 
-        : 'all messages';
-    }
-    
-    // Close modal first to ensure UI is responsive
-    setShowDeletionModal(false);
-    
-    // Small delay to ensure modal is fully closed before showing alert
-    setTimeout(() => {
-      Alert.alert(
-        'Confirm Deletion',
-        `Are you sure you want to delete ${optionText} from ${chatCount} chat${chatCount > 1 ? 's' : ''}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Delete', 
-            style: 'destructive',
-            onPress: () => processDeletion(option, customRange)
-          }
-        ]
-      );
-    }, 300);
-  };
-
-  const processDeletion = async (option: DeletionOption, customRange?: CustomDateRange) => {
-    try {
-      setIsProcessing(true);
-      let totalDeleted = 0;
-
-      // Process each selected chat
-      for (const chatId of selectedChats) {
-        const result = await telegramClient.deleteMessages(chatId, {
-          timeRange: option,
-          startDate: customRange?.startDate,
-          endDate: customRange?.endDate,
-        });
-        totalDeleted += result.deletedCount;
-
-        // Update message count for this chat
-        const chatIndex = chats.findIndex(c => c.id === chatId);
-        if (chatIndex !== -1) {
-          const chat = chats[chatIndex];
-          const isPrivateChat = chat.type === 'private';
-          
-          // Refresh count from server
-          try {
-            const newCount = await telegramClient.getChatMessageCount(chatId, isPrivateChat);
-            setChats(prevChats => {
-              const updated = [...prevChats];
-              updated[chatIndex] = {
-                ...updated[chatIndex],
-                messageCount: newCount,
-              };
-              return updated;
-            });
-          } catch (error) {
-            console.error(`Failed to update count for chat ${chatId}:`, error);
-          }
-        }
-      }
-
-      Alert.alert('Success', `Deleted ${totalDeleted} messages successfully!`);
-      setSelectedChats(new Set());
-    } catch (error) {
-      console.error(error);
-      Alert.alert('Error', 'Failed to delete messages. Please try again.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const selectAllChats = () => {
     const allChatIds = new Set(filteredChats.map(chat => chat.id));
     setSelectedChats(allChatIds);
@@ -256,6 +177,90 @@ export default function ChatsScreen() {
 
   const deselectAllChats = () => {
     setSelectedChats(new Set());
+  };
+
+  const handleRefreshChats = async () => {
+    if (isRefreshing || isLoadingChats) return;
+    
+    setIsRefreshing(true);
+    try {
+      // Step 1: Load chats quickly (without message counts and avatars)
+      const result = await telegramClient.getChatsQuick();
+      
+      // Mark all chats as having avatars loading
+      const chatsWithLoadingState = result.map(chat => ({
+        ...chat,
+        avatarLoading: true,
+      }));
+      
+      setChats(chatsWithLoadingState);
+
+      // Step 2: Load message counts AND profile photos for each chat incrementally
+      const batchSize = 15;
+      for (let i = 0; i < result.length; i += batchSize) {
+        const batch = result.slice(i, i + batchSize);
+        
+        const dataPromises = batch.map(async (chat) => {
+          const isPrivateChat = chat.type === 'private';
+          
+          const [count, photo] = await Promise.all([
+            telegramClient.getChatMessageCount(chat.id, isPrivateChat).catch(error => {
+              console.error(`Failed to count messages for chat ${chat.id}:`, error);
+              return 0;
+            }),
+            telegramClient.getChatProfilePhoto(chat.id).catch(error => {
+              console.error(`Failed to get photo for chat ${chat.id}:`, error);
+              return null;
+            })
+          ]);
+
+          return { 
+            chatId: chat.id, 
+            count,
+            photo: photo || chat.avatar,
+          };
+        });
+
+        const data = await Promise.all(dataPromises);
+
+        setChats(prevChats => {
+          const updatedChats = [...prevChats];
+          data.forEach(({ chatId, count, photo }) => {
+            const index = updatedChats.findIndex(c => c.id === chatId);
+            if (index !== -1) {
+              updatedChats[index] = {
+                ...updatedChats[index],
+                messageCount: count,
+                avatar: photo,
+                avatarLoading: false,
+              };
+            }
+          });
+          return updatedChats;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to refresh chats:', error);
+      setErrorMessage('Failed to refresh chats.');
+      setShowErrorDialog(true);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleConfirmSelection = () => {
+    if (selectedChats.size === 0) {
+      setErrorMessage('Please select at least one chat.');
+      setShowErrorDialog(true);
+      return;
+    }
+
+    // Navigate to confirm deletion screen with selected chat IDs
+    const chatIdsArray = Array.from(selectedChats);
+    router.push({
+      pathname: '/confirm-deletion',
+      params: { chatIds: JSON.stringify(chatIdsArray) }
+    });
   };
 
   return (
@@ -353,29 +358,42 @@ export default function ChatsScreen() {
               <Text className="text-gray-500">No chats found.</Text>
             </View>
           }
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefreshChats}
+              colors={['#0088cc']}
+              tintColor="#0088cc"
+              title="Updating chats..."
+              titleColor="#666"
+            />
+          }
         />
       )}
 
-      {/* Delete Button */}
+      {/* Confirm Selection Button */}
       {selectedChats.size > 0 && (
         <View className="p-4 border-t border-gray-200">
           <TouchableOpacity
-            className="bg-red-500 py-4 rounded-lg"
-            onPress={() => setShowDeletionModal(true)}
-            disabled={isProcessing}
+            className="bg-telegram-blue py-4 rounded-lg"
+            onPress={handleConfirmSelection}
           >
             <Text className="text-white text-center text-lg font-semibold">
-              {isProcessing ? 'Deleting...' : 'Delete Messages'}
+              Confirm Selection
             </Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Deletion Options Modal */}
-      <DeletionOptionsModal
-        visible={showDeletionModal}
-        onClose={() => setShowDeletionModal(false)}
-        onSelectOption={handleDeleteMessages}
+      {/* Error Dialog */}
+      <ConfirmDialog
+        visible={showErrorDialog}
+        title="Error"
+        message={errorMessage}
+        onClose={() => setShowErrorDialog(false)}
+        onConfirm={() => setShowErrorDialog(false)}
+        confirmText="OK"
+        cancelText=""
       />
     </View>
   );

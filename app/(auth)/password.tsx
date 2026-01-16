@@ -1,8 +1,9 @@
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { telegramClient } from '@/lib/telegram';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function TwoFactorAuthScreen() {
   const router = useRouter();
@@ -12,15 +13,19 @@ export default function TwoFactorAuthScreen() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleVerifyPassword = async () => {
     if (!password) {
-      Alert.alert('Error', 'Please enter your 2FA password');
+      setErrorMessage('Please enter your 2FA password');
+      setShowErrorDialog(true);
       return;
     }
 
     if (!phoneNumber) {
-      Alert.alert('Error', 'Missing phone number.');
+      setErrorMessage('Missing phone number.');
+      setShowErrorDialog(true);
       return;
     }
 
@@ -31,7 +36,8 @@ export default function TwoFactorAuthScreen() {
       router.replace('/(tabs)/chats');
     } catch (error) {
       console.error(error);
-      Alert.alert('Invalid Password', 'The 2FA password you entered is incorrect. Please try again.');
+      setErrorMessage('The 2FA password you entered is incorrect. Please try again.');
+      setShowErrorDialog(true);
       setPassword('');
     } finally {
       setIsLoading(false);
@@ -121,6 +127,17 @@ export default function TwoFactorAuthScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Error Dialog */}
+      <ConfirmDialog
+        visible={showErrorDialog}
+        title="Error"
+        message={errorMessage}
+        onClose={() => setShowErrorDialog(false)}
+        onConfirm={() => setShowErrorDialog(false)}
+        confirmText="OK"
+        cancelText=""
+      />
     </KeyboardAvoidingView>
   );
 }

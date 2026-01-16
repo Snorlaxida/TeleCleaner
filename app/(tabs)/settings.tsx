@@ -1,13 +1,17 @@
-import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { telegramClient } from '@/lib/telegram';
 import Constants from 'expo-constants';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const [userInfo, setUserInfo] = useState<{ phone?: string; username?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Get app version from package.json via expo-constants
   const appVersion = Constants.expoConfig?.version || '1.0.0';
@@ -33,28 +37,23 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Clear session on both client and server
-              await telegramClient.logout();
-              router.replace('/(auth)/phone');
-            } catch (error) {
-              console.error('Logout error:', error);
-              Alert.alert('Error', 'Failed to logout properly, but local session was cleared.');
-              router.replace('/(auth)/phone');
-            }
-          }
-        }
-      ]
-    );
+    setShowLogoutDialog(true);
+  };
+
+  const confirmLogout = async () => {
+    try {
+      // Clear session on both client and server
+      await telegramClient.logout();
+      router.replace('/(auth)/phone');
+    } catch (error) {
+      console.error('Logout error:', error);
+      setErrorMessage('Failed to logout properly, but local session was cleared.');
+      setShowErrorDialog(true);
+      // Still redirect to login even on error
+      setTimeout(() => {
+        router.replace('/(auth)/phone');
+      }, 2000);
+    }
   };
 
   const SettingItem = ({ 
@@ -139,6 +138,29 @@ export default function SettingsScreen() {
           Made with ❤️ for Telegram users
         </Text>
       </View>
+
+      {/* Logout Confirmation Dialog */}
+      <ConfirmDialog
+        visible={showLogoutDialog}
+        title="Logout"
+        message="Are you sure you want to logout?"
+        onClose={() => setShowLogoutDialog(false)}
+        onConfirm={confirmLogout}
+        confirmText="Logout"
+        cancelText="Cancel"
+        confirmDestructive
+      />
+
+      {/* Error Dialog */}
+      <ConfirmDialog
+        visible={showErrorDialog}
+        title="Error"
+        message={errorMessage}
+        onClose={() => setShowErrorDialog(false)}
+        onConfirm={() => setShowErrorDialog(false)}
+        confirmText="OK"
+        cancelText=""
+      />
     </ScrollView>
   );
 }
