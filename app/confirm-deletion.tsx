@@ -1,21 +1,31 @@
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, ScrollView, Image } from 'react-native';
-import { useEffect, useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, ScrollView, Image, Platform } from 'react-native';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { telegramClient, TelegramChat } from '@/lib/telegram';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { DeletionOption, CustomDateRange } from '@/app/(tabs)/chats';
 import DateRangePicker from '@/components/DateRangePicker';
 
+// Lightweight chat data structure (without heavy base64 avatars)
+interface LightweightChat {
+  id: string;
+  name: string;
+  type: string;
+  avatar: string | null;
+}
+
 export default function ConfirmDeletionScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
   
-  // Parse selected chats from params
-  const selectedChatsData = typeof params.chatsData === 'string' 
+  // Parse selected chats from params (now lightweight - no base64 avatars)
+  const selectedChatsData: LightweightChat[] = typeof params.chatsData === 'string' 
     ? JSON.parse(params.chatsData) 
     : [];
   
-  const [chats, setChats] = useState<TelegramChat[]>(selectedChatsData);
+  const [chats, setChats] = useState<LightweightChat[]>(selectedChatsData);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedTimeRange, setSelectedTimeRange] = useState<DeletionOption>('last_day');
   const [customRange, setCustomRange] = useState<CustomDateRange | null>(null);
@@ -117,48 +127,70 @@ export default function ConfirmDeletionScreen() {
     );
   }
 
+  // Generate avatar based on chat type (memoized for performance)
+  const getDefaultAvatar = useMemo(() => (chat: LightweightChat): string => {
+    if (chat.avatar) return chat.avatar;
+    
+    // Default avatars based on type
+    switch (chat.type) {
+      case 'user':
+      case 'private':
+        return chat.name.charAt(0).toUpperCase() || '👤';
+      case 'channel':
+        return '📢';
+      case 'group':
+        return '👥';
+      default:
+        return '💬';
+    }
+  }, []);
+
+  // Render individual chat item (optimized for FlatList)
+  const renderChatItem = ({ item, index }: { item: LightweightChat; index: number }) => {
+    const avatar = getDefaultAvatar(item);
+    const isEmoji = /[\u{1F300}-\u{1F9FF}]/u.test(avatar);
+    
+    return (
+      <View>
+        <View className="flex-row items-center py-3 px-3">
+          {/* Avatar */}
+          <View className="w-10 h-10 rounded-full bg-telegram-lightBlue items-center justify-center mr-3">
+            <Text className={isEmoji ? "text-lg" : "text-base font-bold text-white"}>
+              {avatar}
+            </Text>
+          </View>
+          <View className="flex-1">
+            <Text className="text-base font-medium text-gray-900" numberOfLines={1}>
+              {item.name}
+            </Text>
+          </View>
+        </View>
+        {index < chats.length - 1 && (
+          <View className="h-px bg-gray-200 ml-13" />
+        )}
+      </View>
+    );
+  };
+
   return (
     <View className="flex-1 bg-white">
       <ScrollView className="flex-1">
-        {/* Selected Chats Section */}
+        {/* Selected Chats Section - Using FlatList for virtualization */}
         <View className="px-4 py-4">
           <Text className="text-lg font-semibold text-gray-900 mb-3">
             Selected Chats ({chats.length})
           </Text>
-          <View className="bg-gray-50 rounded-lg px-3 border border-gray-200">
-            {chats.map((chat, index) => {
-              const isBase64Image = chat.avatar && chat.avatar.startsWith('data:image');
-              const isEmoji = chat.avatar && !isBase64Image && /[\u{1F300}-\u{1F9FF}]/u.test(chat.avatar);
-              
-              return (
-                <View key={chat.id}>
-                  <View className="flex-row items-center py-3">
-                    {/* Avatar */}
-                    <View className="w-10 h-10 rounded-full bg-telegram-lightBlue items-center justify-center mr-3 overflow-hidden">
-                      {isBase64Image ? (
-                        <Image 
-                          source={{ uri: chat.avatar }} 
-                          className="w-10 h-10"
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <Text className={isEmoji ? "text-lg" : "text-base font-bold text-white"}>
-                          {chat.avatar || '💬'}
-                        </Text>
-                      )}
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-base font-medium text-gray-900" numberOfLines={1}>
-                        {chat.name}
-                      </Text>
-                    </View>
-                  </View>
-                  {index < chats.length - 1 && (
-                    <View className="h-px bg-gray-200 ml-13" />
-                  )}
-                </View>
-              );
-            })}
+          <View className="bg-gray-50 rounded-lg border border-gray-200">
+            <FlatList
+              data={chats}
+              renderItem={renderChatItem}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              initialNumToRender={20}
+              maxToRenderPerBatch={20}
+              windowSize={5}
+              removeClippedSubviews={true}
+            />
           </View>
         </View>
 
@@ -218,7 +250,12 @@ export default function ConfirmDeletionScreen() {
       </ScrollView>
 
       {/* Delete Button */}
-      <View className="p-4 border-t border-gray-200 bg-white">
+      <View 
+        className="p-4 border-t border-gray-200 bg-white"
+        style={{ 
+          paddingBottom: Platform.OS === 'android' ? Math.max(16, insets.bottom) : 16 
+        }}
+      >
         <TouchableOpacity
           className={`py-4 rounded-lg ${isDeleting ? 'bg-red-300' : 'bg-red-500'}`}
           onPress={handleDeletePress}

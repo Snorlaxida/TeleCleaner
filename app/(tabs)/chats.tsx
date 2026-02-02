@@ -255,8 +255,18 @@ export default function ChatsScreen() {
       return;
     }
 
-    // Navigate to confirm deletion screen with full chat data (including avatars)
-    const selectedChatsData = chats.filter(chat => selectedChats.has(chat.id));
+    // Navigate to confirm deletion screen with only chat IDs and names (without heavy base64 avatars)
+    // This dramatically improves performance for large selections
+    const selectedChatsData = chats
+      .filter(chat => selectedChats.has(chat.id))
+      .map(chat => ({
+        id: chat.id,
+        name: chat.name,
+        type: chat.type,
+        // Use emoji/initial avatars only (no base64 images)
+        avatar: chat.avatar && !chat.avatar.startsWith('data:image') ? chat.avatar : null,
+      }));
+    
     router.push({
       pathname: '/confirm-deletion',
       params: { chatsData: JSON.stringify(selectedChatsData) }

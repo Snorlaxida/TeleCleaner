@@ -48,7 +48,8 @@ export default function RootLayout() {
           name="confirm-deletion" 
           options={{ 
             title: 'Confirm Deletion',
-            headerShown: true
+            headerShown: true,
+            headerBackTitle: 'Chats'
           }} 
         />
       </Stack>
