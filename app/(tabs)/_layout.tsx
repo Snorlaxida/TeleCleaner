@@ -11,6 +11,16 @@ export default function TabLayout() {
           backgroundColor: '#ffffff',
           borderTopWidth: 1,
           borderTopColor: '#e5e5ea',
+          height: 60,
+          paddingBottom: 2,
+          paddingTop: 2,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          marginBottom: 0,
+        },
+        tabBarIconStyle: {
+          marginBottom: 0,
         },
         headerStyle: {
           backgroundColor: '#0088cc',
@@ -26,7 +36,7 @@ export default function TabLayout() {
         options={{
           title: 'Chats',
           tabBarIcon: ({ color, size }) => (
-            <Text style={{ fontSize: size, color }}>💬</Text>
+            <Text style={{ fontSize: 20, color }}>💬</Text>
           ),
         }}
       />
@@ -35,7 +45,7 @@ export default function TabLayout() {
         options={{
           title: 'Settings',
           tabBarIcon: ({ color, size }) => (
-            <Text style={{ fontSize: size, color }}>⚙️</Text>
+            <Text style={{ fontSize: 20, color }}>⚙️</Text>
           ),
         }}
       />

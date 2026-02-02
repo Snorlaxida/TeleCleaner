@@ -1,4 +1,4 @@
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, ScrollView, Image } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { telegramClient, TelegramChat } from '@/lib/telegram';
@@ -10,18 +10,16 @@ export default function ConfirmDeletionScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   
-  // Parse selected chat IDs from params
-  const selectedChatIds = typeof params.chatIds === 'string' 
-    ? JSON.parse(params.chatIds) 
+  // Parse selected chats from params
+  const selectedChatsData = typeof params.chatsData === 'string' 
+    ? JSON.parse(params.chatsData) 
     : [];
   
-  const [chats, setChats] = useState<TelegramChat[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [chats, setChats] = useState<TelegramChat[]>(selectedChatsData);
+  const [isLoading, setIsLoading] = useState(false);
   const [selectedTimeRange, setSelectedTimeRange] = useState<DeletionOption>('last_day');
   const [customRange, setCustomRange] = useState<CustomDateRange | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [totalMessages, setTotalMessages] = useState<number>(0);
-  const [isCalculating, setIsCalculating] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
@@ -29,74 +27,7 @@ export default function ConfirmDeletionScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
-    loadSelectedChats();
-  }, []);
 
-  useEffect(() => {
-    if (chats.length > 0) {
-      calculateTotalMessages();
-    }
-  }, [selectedTimeRange, customRange, chats]);
-
-  const loadSelectedChats = async () => {
-    try {
-      setIsLoading(true);
-      // Load quick info for selected chats
-      const allChats = await telegramClient.getChatsQuick();
-      const selectedChats = allChats.filter(chat => selectedChatIds.includes(chat.id));
-      
-      // Load message counts for selected chats
-      const chatsWithCounts = await Promise.all(
-        selectedChats.map(async (chat) => {
-          const isPrivateChat = chat.type === 'private';
-          const count = await telegramClient.getChatMessageCount(chat.id, isPrivateChat).catch(() => 0);
-          return { ...chat, messageCount: count };
-        })
-      );
-      
-      setChats(chatsWithCounts);
-    } catch (error) {
-      console.error('Failed to load chats:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const calculateTotalMessages = async () => {
-    setIsCalculating(true);
-    try {
-      // For now, use estimated count based on time range
-      // In a real implementation, you'd query the backend for exact counts
-      let total = 0;
-      
-      for (const chat of chats) {
-        // Get approximate message count based on time range
-        const chatTotal = chat.messageCount || 0;
-        
-        // Apply time range multiplier (rough estimate)
-        let multiplier = 1;
-        if (selectedTimeRange === 'last_day') {
-          multiplier = 0.1; // Assume ~10% of messages in last day
-        } else if (selectedTimeRange === 'last_week') {
-          multiplier = 0.3; // Assume ~30% of messages in last week
-        } else if (selectedTimeRange === 'custom' && customRange) {
-          // Estimate based on date range (very rough)
-          const days = Math.ceil((customRange.endDate.getTime() - customRange.startDate.getTime()) / (1000 * 60 * 60 * 24));
-          multiplier = Math.min(days / 365, 1); // Assume messages spread over a year
-        }
-        
-        total += Math.floor(chatTotal * multiplier);
-      }
-      
-      setTotalMessages(total);
-    } catch (error) {
-      console.error('Failed to calculate total messages:', error);
-      setTotalMessages(0);
-    } finally {
-      setIsCalculating(false);
-    }
-  };
 
   const handleTimeRangeSelect = (option: DeletionOption) => {
     if (option === 'custom') {
@@ -120,20 +51,18 @@ export default function ConfirmDeletionScreen() {
   const handleConfirmDeletion = async () => {
     try {
       setIsDeleting(true);
-      let totalDeleted = 0;
 
       // Process each selected chat
       for (const chat of chats) {
-        const result = await telegramClient.deleteMessages(chat.id, {
+        await telegramClient.deleteMessages(chat.id, {
           timeRange: selectedTimeRange,
           startDate: customRange?.startDate,
           endDate: customRange?.endDate,
         });
-        totalDeleted += result.deletedCount;
       }
 
       // Show success message
-      setSuccessMessage(`Successfully deleted ${totalDeleted} messages!`);
+      setSuccessMessage(`Messages successfully deleted from ${chats.length} chat${chats.length > 1 ? 's' : ''}!`);
       setShowSuccessDialog(true);
     } catch (error) {
       console.error('Failed to delete messages:', error);
@@ -190,43 +119,46 @@ export default function ConfirmDeletionScreen() {
 
   return (
     <View className="flex-1 bg-white">
-      {/* Header */}
-      <View className="bg-telegram-blue px-4 py-4 border-b border-gray-200">
-        <View className="flex-row items-center">
-          <TouchableOpacity onPress={() => router.back()} className="mr-4">
-            <Text className="text-white text-2xl">←</Text>
-          </TouchableOpacity>
-          <Text className="text-xl font-bold text-white">Confirm Deletion</Text>
-        </View>
-      </View>
-
       <ScrollView className="flex-1">
         {/* Selected Chats Section */}
         <View className="px-4 py-4">
           <Text className="text-lg font-semibold text-gray-900 mb-3">
             Selected Chats ({chats.length})
           </Text>
-          <View className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-            {chats.map((chat, index) => (
-              <View key={chat.id}>
-                <View className="flex-row items-center py-2">
-                  <View className="w-10 h-10 rounded-full bg-telegram-lightBlue items-center justify-center mr-3">
-                    <Text className="text-lg">{chat.avatar || '💬'}</Text>
+          <View className="bg-gray-50 rounded-lg px-3 border border-gray-200">
+            {chats.map((chat, index) => {
+              const isBase64Image = chat.avatar && chat.avatar.startsWith('data:image');
+              const isEmoji = chat.avatar && !isBase64Image && /[\u{1F300}-\u{1F9FF}]/u.test(chat.avatar);
+              
+              return (
+                <View key={chat.id}>
+                  <View className="flex-row items-center py-3">
+                    {/* Avatar */}
+                    <View className="w-10 h-10 rounded-full bg-telegram-lightBlue items-center justify-center mr-3 overflow-hidden">
+                      {isBase64Image ? (
+                        <Image 
+                          source={{ uri: chat.avatar }} 
+                          className="w-10 h-10"
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Text className={isEmoji ? "text-lg" : "text-base font-bold text-white"}>
+                          {chat.avatar || '💬'}
+                        </Text>
+                      )}
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-base font-medium text-gray-900" numberOfLines={1}>
+                        {chat.name}
+                      </Text>
+                    </View>
                   </View>
-                  <View className="flex-1">
-                    <Text className="text-base font-medium text-gray-900" numberOfLines={1}>
-                      {chat.name}
-                    </Text>
-                    <Text className="text-sm text-gray-500">
-                      {chat.messageCount} total messages
-                    </Text>
-                  </View>
+                  {index < chats.length - 1 && (
+                    <View className="h-px bg-gray-200 ml-13" />
+                  )}
                 </View>
-                {index < chats.length - 1 && (
-                  <View className="h-px bg-gray-200 ml-13" />
-                )}
-              </View>
-            ))}
+              );
+            })}
           </View>
         </View>
 
@@ -271,29 +203,6 @@ export default function ConfirmDeletionScreen() {
           </View>
         </View>
 
-        {/* Total Messages Estimate */}
-        <View className="px-4 py-4 border-t border-gray-200">
-          <View className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <Text className="text-base font-semibold text-gray-900 mb-2">
-              Estimated Messages to Delete
-            </Text>
-            <View className="flex-row items-center">
-              {isCalculating ? (
-                <>
-                  <ActivityIndicator size="small" color="#0088cc" />
-                  <Text className="ml-2 text-gray-600">Calculating...</Text>
-                </>
-              ) : (
-                <Text className="text-2xl font-bold text-telegram-blue">
-                  ~{totalMessages.toLocaleString()}
-                </Text>
-              )}
-            </View>
-            <Text className="text-sm text-gray-600 mt-2">
-              {getTimeRangeDescription()}
-            </Text>
-          </View>
-        </View>
 
         {/* Warning */}
         <View className="px-4 py-4">
@@ -313,7 +222,7 @@ export default function ConfirmDeletionScreen() {
         <TouchableOpacity
           className={`py-4 rounded-lg ${isDeleting ? 'bg-red-300' : 'bg-red-500'}`}
           onPress={handleDeletePress}
-          disabled={isDeleting || isCalculating}
+          disabled={isDeleting}
         >
           {isDeleting ? (
             <View className="flex-row items-center justify-center">
@@ -341,7 +250,7 @@ export default function ConfirmDeletionScreen() {
       <ConfirmDialog
         visible={showConfirmDialog}
         title="Confirm Deletion"
-        message={`Are you sure you want to delete approximately ${totalMessages.toLocaleString()} messages from ${chats.length} chat${chats.length > 1 ? 's' : ''}? This action cannot be undone.`}
+        message={`Are you sure you want to delete messages from ${chats.length} chat${chats.length > 1 ? 's' : ''} for ${getTimeRangeText()}? This action cannot be undone.`}
         onClose={() => setShowConfirmDialog(false)}
         onConfirm={handleConfirmDeletion}
         confirmText="Delete"

@@ -1,4 +1,4 @@
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, RefreshControl } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, RefreshControl, Platform } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import ChatListItem from '@/components/ChatListItem';
@@ -255,11 +255,11 @@ export default function ChatsScreen() {
       return;
     }
 
-    // Navigate to confirm deletion screen with selected chat IDs
-    const chatIdsArray = Array.from(selectedChats);
+    // Navigate to confirm deletion screen with full chat data (including avatars)
+    const selectedChatsData = chats.filter(chat => selectedChats.has(chat.id));
     router.push({
       pathname: '/confirm-deletion',
-      params: { chatIds: JSON.stringify(chatIdsArray) }
+      params: { chatsData: JSON.stringify(selectedChatsData) }
     });
   };
 
@@ -287,21 +287,34 @@ export default function ChatsScreen() {
 
       {/* Select All Button */}
       <View className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-        <TouchableOpacity
-          className="bg-telegram-blue py-3 rounded-lg"
-          onPress={selectedChats.size === filteredChats.length ? deselectAllChats : selectAllChats}
-          disabled={filteredChats.length === 0 || isLoadingChats}
-        >
-          <Text className="text-white text-center font-semibold">
-            {isLoadingChats
-              ? 'Loading...'
-              : filteredChats.length === 0
-              ? 'No chats'
-              : selectedChats.size === filteredChats.length
-              ? '✓ Deselect All'
-              : 'Select All Chats'}
-          </Text>
-        </TouchableOpacity>
+        <View className="flex-row gap-2">
+          <TouchableOpacity
+            className="flex-1 bg-telegram-blue py-3 rounded-lg"
+            onPress={selectedChats.size === filteredChats.length ? deselectAllChats : selectAllChats}
+            disabled={filteredChats.length === 0 || isLoadingChats}
+          >
+            <Text className="text-white text-center font-semibold">
+              {isLoadingChats
+                ? 'Loading...'
+                : filteredChats.length === 0
+                ? 'No chats'
+                : selectedChats.size === filteredChats.length
+                ? '✓ Deselect All'
+                : 'Select All Chats'}
+            </Text>
+          </TouchableOpacity>
+          {Platform.OS === 'web' && !isLoadingChats && (
+            <TouchableOpacity
+              className="bg-green-500 py-3 px-4 rounded-lg"
+              onPress={handleRefreshChats}
+              disabled={isRefreshing}
+            >
+              <Text className="text-white text-center font-semibold">
+                {isRefreshing ? '🔄' : '↻'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Header with selection count */}
