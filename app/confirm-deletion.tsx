@@ -85,7 +85,11 @@ export default function ConfirmDeletionScreen() {
 
   const handleSuccessConfirm = () => {
     setShowSuccessDialog(false);
-    router.back();
+    // Navigate back with shouldRefresh parameter to trigger chat refresh
+    router.replace({
+      pathname: '/(tabs)/chats',
+      params: { shouldRefresh: 'true' }
+    });
   };
 
   const getTimeRangeText = () => {

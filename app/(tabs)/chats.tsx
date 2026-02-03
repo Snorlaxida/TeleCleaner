@@ -1,6 +1,6 @@
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, RefreshControl, Platform } from 'react-native';
 import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import ChatListItem from '@/components/ChatListItem';
 import { telegramClient, TelegramChat } from '@/lib/telegram';
@@ -15,6 +15,7 @@ export interface CustomDateRange {
 
 export default function ChatsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [chats, setChats] = useState<TelegramChat[]>([]);
   const [filteredChats, setFilteredChats] = useState<TelegramChat[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,6 +24,7 @@ export default function ChatsScreen() {
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [avatarCache, setAvatarCache] = useState<Map<string, string>>(new Map());
 
   // Filter chats based on search query
   useEffect(() => {
@@ -56,6 +58,8 @@ export default function ChatsScreen() {
         // Step 2: Load message counts AND profile photos for each chat incrementally
         // Process in batches to avoid overwhelming the API
         const batchSize = 15; // Process 15 chats at a time for faster loading
+        const newAvatarCache = new Map<string, string>();
+        
         for (let i = 0; i < result.length; i += batchSize) {
           const batch = result.slice(i, i + batchSize);
           
@@ -75,10 +79,14 @@ export default function ChatsScreen() {
               })
             ]);
 
+            // Cache the avatar
+            const finalAvatar = photo || chat.avatar;
+            newAvatarCache.set(chat.id, finalAvatar);
+
             return { 
               chatId: chat.id, 
               count,
-              photo: photo || chat.avatar, // Keep emoji/initial if no photo
+              photo: finalAvatar,
             };
           });
 
@@ -101,6 +109,9 @@ export default function ChatsScreen() {
             return updatedChats;
           });
         }
+        
+        // Save the avatar cache
+        setAvatarCache(newAvatarCache);
       } catch (error) {
         console.error(error);
         setErrorMessage('Failed to load chats from Telegram.');
@@ -112,16 +123,20 @@ export default function ChatsScreen() {
     loadChats();
   }, []);
 
-  // Refresh chats when screen comes into focus (e.g., after returning from deletion)
-  useFocusEffect(
-    useCallback(() => {
-      // Only refresh if we already have chats loaded
-      if (chats.length > 0 && !isLoadingChats) {
-        console.log('Screen focused - refreshing chats...');
-        handleRefreshChats();
-      }
-    }, [chats.length, isLoadingChats])
-  );
+  // Refresh chats only after deletion (when shouldRefresh param is set)
+  useEffect(() => {
+    if (params.shouldRefresh === 'true' && chats.length > 0 && !isLoadingChats && !isRefreshing) {
+      console.log('Refreshing chats after deletion...');
+      handleRefreshChats();
+      
+      // Clear the shouldRefresh parameter after triggering refresh
+      // This prevents infinite refresh loops
+      router.replace({
+        pathname: '/(tabs)/chats',
+        params: { shouldRefresh: 'false' }
+      });
+    }
+  }, [params.shouldRefresh]);
 
   const toggleChatSelection = (chatId: string) => {
     const newSelection = new Set(selectedChats);
@@ -147,18 +162,19 @@ export default function ChatsScreen() {
     
     setIsRefreshing(true);
     try {
-      // Step 1: Load chats quickly (without message counts and avatars)
+      // Step 1: Load chats quickly (without message counts)
       const result = await telegramClient.getChatsQuick();
       
-      // Mark all chats as having avatars loading
-      const chatsWithLoadingState = result.map(chat => ({
+      // Use cached avatars instead of reloading them
+      const chatsWithCachedAvatars = result.map(chat => ({
         ...chat,
-        avatarLoading: true,
+        avatar: avatarCache.get(chat.id) || chat.avatar,
+        avatarLoading: false,
       }));
       
-      setChats(chatsWithLoadingState);
+      setChats(chatsWithCachedAvatars);
 
-      // Step 2: Load message counts AND profile photos for each chat incrementally
+      // Step 2: ONLY reload message counts (NOT avatars)
       const batchSize = 15;
       for (let i = 0; i < result.length; i += batchSize) {
         const batch = result.slice(i, i + batchSize);
@@ -166,36 +182,30 @@ export default function ChatsScreen() {
         const dataPromises = batch.map(async (chat) => {
           const isPrivateChat = chat.type === 'private';
           
-          const [count, photo] = await Promise.all([
-            telegramClient.getChatMessageCount(chat.id, isPrivateChat).catch(error => {
-              console.error(`Failed to count messages for chat ${chat.id}:`, error);
-              return 0;
-            }),
-            telegramClient.getChatProfilePhoto(chat.id).catch(error => {
-              console.error(`Failed to get photo for chat ${chat.id}:`, error);
-              return null;
-            })
-          ]);
+          // Only fetch message count, NOT avatar
+          const count = await telegramClient.getChatMessageCount(chat.id, isPrivateChat).catch(error => {
+            console.error(`Failed to count messages for chat ${chat.id}:`, error);
+            return 0;
+          });
 
           return { 
             chatId: chat.id, 
             count,
-            photo: photo || chat.avatar,
           };
         });
 
         const data = await Promise.all(dataPromises);
 
+        // Update only message counts, keep cached avatars
         setChats(prevChats => {
           const updatedChats = [...prevChats];
-          data.forEach(({ chatId, count, photo }) => {
+          data.forEach(({ chatId, count }) => {
             const index = updatedChats.findIndex(c => c.id === chatId);
             if (index !== -1) {
               updatedChats[index] = {
                 ...updatedChats[index],
                 messageCount: count,
-                avatar: photo,
-                avatarLoading: false,
+                // Keep the cached avatar
               };
             }
           });

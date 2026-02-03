@@ -648,10 +648,6 @@ export class TelegramClient {
    * Logout from Telegram (clears session on both client and server)
    */
   async logout(): Promise<boolean> {
-    // Disconnect WebSocket first
-    this.disconnectWebSocket();
-    this.isSubscribed = false;
-
     if (!API_BASE_URL) {
       console.warn('API base URL not configured, clearing local session only');
       await this.clearSession();
