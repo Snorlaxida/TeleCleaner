@@ -23,7 +23,7 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
     }
   }, [visible]);
 
-  // Generate calendar days for current month
+  // Generate calendar days for current month - always return 42 cells (6 weeks)
   const generateCalendarDays = (date: Date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
@@ -42,6 +42,12 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
     // Add actual days
     for (let i = 1; i <= daysInMonth; i++) {
       days.push(new Date(year, month, i));
+    }
+    
+    // Always fill to 42 cells (6 weeks) to prevent calendar height from jumping
+    const totalCells = 42;
+    while (days.length < totalCells) {
+      days.push(null);
     }
     
     return days;

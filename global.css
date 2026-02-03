@@ -1,3 +1,9 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Remove focus outline from all inputs in web version */
+input:focus,
+textarea:focus {
+  outline: none;
+}

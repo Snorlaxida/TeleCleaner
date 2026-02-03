@@ -150,8 +150,15 @@ export default function ConfirmDeletionScreen() {
     const avatar = getDefaultAvatar(item);
     const isEmoji = /[\u{1F300}-\u{1F9FF}]/u.test(avatar);
     
+    const isFirst = index === 0;
+    const isLast = index === chats.length - 1;
+    
     return (
-      <View>
+      <View 
+        className={`bg-gray-50 mx-4 border-x border-gray-200 ${
+          isFirst ? 'border-t rounded-t-lg' : ''
+        } ${isLast ? 'border-b rounded-b-lg' : ''}`}
+      >
         <View className="flex-row items-center py-3 px-3">
           {/* Avatar */}
           <View className="w-10 h-10 rounded-full bg-telegram-lightBlue items-center justify-center mr-3">
@@ -165,89 +172,95 @@ export default function ConfirmDeletionScreen() {
             </Text>
           </View>
         </View>
-        {index < chats.length - 1 && (
+        {!isLast && (
           <View className="h-px bg-gray-200 ml-13" />
         )}
       </View>
     );
   };
 
+  // Render header section (title)
+  const renderListHeader = () => (
+    <View className="px-4 py-4">
+      <Text className="text-lg font-semibold text-gray-900 mb-3">
+        Selected Chats ({chats.length})
+      </Text>
+    </View>
+  );
+
+  // Render footer section (time range and warning)
+  const renderListFooter = () => (
+    <>
+      {/* Time Range Selection */}
+      <View className="px-4 py-4 border-t border-gray-200">
+        <Text className="text-lg font-semibold text-gray-900 mb-3">
+          Time Period
+        </Text>
+        <View className="space-y-2">
+          {[
+            { value: 'last_day' as DeletionOption, label: 'Last 24 Hours' },
+            { value: 'last_week' as DeletionOption, label: 'Last 7 Days' },
+            { value: 'custom' as DeletionOption, label: 'Custom Date Range' },
+            { value: 'all' as DeletionOption, label: 'All Messages' },
+          ].map((option) => (
+            <TouchableOpacity
+              key={option.value}
+              className={`p-4 rounded-lg border-2 ${
+                selectedTimeRange === option.value
+                  ? 'border-telegram-blue bg-telegram-lightBlue/10'
+                  : 'border-gray-200 bg-white'
+              }`}
+              onPress={() => handleTimeRangeSelect(option.value)}
+            >
+              <View className="flex-row items-center justify-between">
+                <Text className={`text-base font-medium ${
+                  selectedTimeRange === option.value ? 'text-telegram-blue' : 'text-gray-900'
+                }`}>
+                  {option.label}
+                </Text>
+                {selectedTimeRange === option.value && (
+                  <Text className="text-telegram-blue text-lg">✓</Text>
+                )}
+              </View>
+              {selectedTimeRange === option.value && option.value === 'custom' && customRange && (
+                <Text className="text-sm text-gray-500 mt-2">
+                  {customRange.startDate.toLocaleDateString()} - {customRange.endDate.toLocaleDateString()}
+                </Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Warning */}
+      <View className="px-4 py-4">
+        <View className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <Text className="text-sm font-semibold text-red-800 mb-1">
+            ⚠️ Warning
+          </Text>
+          <Text className="text-sm text-red-700">
+            This action cannot be undone. Messages will be permanently deleted from Telegram.
+          </Text>
+        </View>
+      </View>
+    </>
+  );
+
   return (
     <View className="flex-1 bg-white">
-      <ScrollView className="flex-1">
-        {/* Selected Chats Section - Using FlatList for virtualization */}
-        <View className="px-4 py-4">
-          <Text className="text-lg font-semibold text-gray-900 mb-3">
-            Selected Chats ({chats.length})
-          </Text>
-          <View className="bg-gray-50 rounded-lg border border-gray-200">
-            <FlatList
-              data={chats}
-              renderItem={renderChatItem}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              initialNumToRender={20}
-              maxToRenderPerBatch={20}
-              windowSize={5}
-              removeClippedSubviews={true}
-            />
-          </View>
-        </View>
-
-        {/* Time Range Selection */}
-        <View className="px-4 py-4 border-t border-gray-200">
-          <Text className="text-lg font-semibold text-gray-900 mb-3">
-            Time Period
-          </Text>
-          <View className="space-y-2">
-            {[
-              { value: 'last_day' as DeletionOption, label: 'Last 24 Hours' },
-              { value: 'last_week' as DeletionOption, label: 'Last 7 Days' },
-              { value: 'custom' as DeletionOption, label: 'Custom Date Range' },
-              { value: 'all' as DeletionOption, label: 'All Messages' },
-            ].map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                className={`p-4 rounded-lg border-2 ${
-                  selectedTimeRange === option.value
-                    ? 'border-telegram-blue bg-telegram-lightBlue/10'
-                    : 'border-gray-200 bg-white'
-                }`}
-                onPress={() => handleTimeRangeSelect(option.value)}
-              >
-                <View className="flex-row items-center justify-between">
-                  <Text className={`text-base font-medium ${
-                    selectedTimeRange === option.value ? 'text-telegram-blue' : 'text-gray-900'
-                  }`}>
-                    {option.label}
-                  </Text>
-                  {selectedTimeRange === option.value && (
-                    <Text className="text-telegram-blue text-lg">✓</Text>
-                  )}
-                </View>
-                {selectedTimeRange === option.value && option.value === 'custom' && customRange && (
-                  <Text className="text-sm text-gray-500 mt-2">
-                    {customRange.startDate.toLocaleDateString()} - {customRange.endDate.toLocaleDateString()}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-
-        {/* Warning */}
-        <View className="px-4 py-4">
-          <View className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <Text className="text-sm font-semibold text-red-800 mb-1">
-              ⚠️ Warning
-            </Text>
-            <Text className="text-sm text-red-700">
-              This action cannot be undone. Messages will be permanently deleted from Telegram.
-            </Text>
-          </View>
-        </View>
-      </ScrollView>
+      {/* Main scrollable list with chats */}
+      <FlatList
+        data={chats}
+        renderItem={renderChatItem}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={renderListHeader}
+        ListFooterComponent={renderListFooter}
+        contentContainerStyle={{ paddingBottom: 80 }}
+        className="flex-1"
+        initialNumToRender={20}
+        maxToRenderPerBatch={20}
+        windowSize={10}
+      />
 
       {/* Delete Button */}
       <View 

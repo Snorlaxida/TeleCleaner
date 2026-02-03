@@ -19,6 +19,33 @@ export default function VerifyCodeScreen() {
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
   const handleCodeChange = (text: string, index: number) => {
+    // Handle paste operation (when text contains multiple characters)
+    if (text.length > 1) {
+      // Extract only digits from pasted text
+      const digits = text.replace(/\D/g, '').slice(0, 5);
+      
+      if (digits.length > 0) {
+        const newCode = [...code];
+        
+        // Fill all 5 inputs with the pasted digits
+        for (let i = 0; i < 5; i++) {
+          newCode[i] = digits[i] || '';
+        }
+        
+        setCode(newCode);
+        
+        // Focus the last filled input or trigger verification
+        if (digits.length === 5) {
+          inputRefs.current[4]?.focus();
+          verifyCode(digits);
+        } else if (digits.length > 0) {
+          inputRefs.current[Math.min(digits.length, 4)]?.focus();
+        }
+      }
+      return;
+    }
+
+    // Handle single character input (normal typing)
     const newCode = [...code];
     newCode[index] = text;
     setCode(newCode);
@@ -101,7 +128,6 @@ export default function VerifyCodeScreen() {
               key={index}
               ref={(ref) => (inputRefs.current[index] = ref)}
               className="w-12 h-14 border-2 border-telegram-blue rounded-lg text-center text-2xl font-bold"
-              maxLength={1}
               keyboardType="number-pad"
               value={digit}
               onChangeText={(text) => handleCodeChange(text, index)}
