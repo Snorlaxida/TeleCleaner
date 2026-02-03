@@ -1,6 +1,7 @@
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, RefreshControl, Platform } from 'react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import ChatListItem from '@/components/ChatListItem';
 import { telegramClient, TelegramChat } from '@/lib/telegram';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -35,39 +36,6 @@ export default function ChatsScreen() {
       setFilteredChats(filtered);
     }
   }, [searchQuery, chats]);
-
-  // Setup real-time message count updates
-  useEffect(() => {
-    const handleMessageCountUpdate = (data: { chatId: string; count: number }) => {
-      console.log('📬 Real-time update received:', data);
-      
-      // Update chat message count in state
-      setChats(prevChats => {
-        const updatedChats = [...prevChats];
-        const index = updatedChats.findIndex(c => c.id === data.chatId);
-        
-        if (index !== -1) {
-          updatedChats[index] = {
-            ...updatedChats[index],
-            messageCount: data.count,
-          };
-          console.log(`✅ Updated chat ${data.chatId} count to ${data.count}`);
-        } else {
-          console.warn(`⚠️ Chat ${data.chatId} not found in state`);
-        }
-        
-        return updatedChats;
-      });
-    };
-
-    // Register callback
-    telegramClient.onMessageCountUpdate(handleMessageCountUpdate);
-
-    // Cleanup: unregister callback when component unmounts
-    return () => {
-      telegramClient.offMessageCountUpdate(handleMessageCountUpdate);
-    };
-  }, []);
 
   useEffect(() => {
     const loadChats = async () => {
@@ -133,15 +101,6 @@ export default function ChatsScreen() {
             return updatedChats;
           });
         }
-
-        // Step 3: Subscribe to real-time updates
-        console.log('Subscribing to real-time updates...');
-        const subscribed = await telegramClient.subscribeToUpdates();
-        if (subscribed) {
-          console.log('✅ Subscribed to real-time updates');
-        } else {
-          console.warn('⚠️ Failed to subscribe to real-time updates');
-        }
       } catch (error) {
         console.error(error);
         setErrorMessage('Failed to load chats from Telegram.');
@@ -151,14 +110,18 @@ export default function ChatsScreen() {
     };
 
     loadChats();
-
-    // Cleanup: unsubscribe when component unmounts
-    return () => {
-      telegramClient.unsubscribeFromUpdates().catch(err => {
-        console.error('Error unsubscribing from updates:', err);
-      });
-    };
   }, []);
+
+  // Refresh chats when screen comes into focus (e.g., after returning from deletion)
+  useFocusEffect(
+    useCallback(() => {
+      // Only refresh if we already have chats loaded
+      if (chats.length > 0 && !isLoadingChats) {
+        console.log('Screen focused - refreshing chats...');
+        handleRefreshChats();
+      }
+    }, [chats.length, isLoadingChats])
+  );
 
   const toggleChatSelection = (chatId: string) => {
     const newSelection = new Set(selectedChats);
