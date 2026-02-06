@@ -8,6 +8,7 @@ const API_BASE_URL =
 
 const SESSION_STRING_KEY = '@telegram_session_string';
 const USER_ID_STORAGE_KEY = '@telegram_user_id';
+const AUTH_TOKEN_KEY = '@auth_token';
 
 // Fetch with timeout utility
 const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 30000): Promise<Response> => {
@@ -58,12 +59,56 @@ export interface TelegramMessage {
 export class TelegramClient {
   private currentUserId: string | null = null; // we use phoneNumber as userId for now
   private authSessionString: string | null = null; // session string from sendCode for signIn
+  private authToken: string | null = null; // JWT token for API authentication
 
   constructor() {
     if (!API_BASE_URL) {
       console.warn(
         'EXPO_PUBLIC_API_URL is not set. TelegramClient will not be able to call backend functions.'
       );
+    }
+  }
+
+  /**
+   * Save JWT token to persistent storage
+   */
+  private async saveToken(token: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
+      this.authToken = token;
+      console.log('Auth token saved successfully');
+    } catch (error) {
+      console.error('Failed to save auth token:', error);
+    }
+  }
+
+  /**
+   * Load JWT token from persistent storage
+   */
+  private async loadToken(): Promise<string | null> {
+    try {
+      const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+      if (token) {
+        this.authToken = token;
+        console.log('Auth token loaded successfully');
+      }
+      return token;
+    } catch (error) {
+      console.error('Failed to load auth token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Clear JWT token
+   */
+  private async clearToken(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+      this.authToken = null;
+      console.log('Auth token cleared successfully');
+    } catch (error) {
+      console.error('Failed to clear auth token:', error);
     }
   }
 
@@ -86,17 +131,27 @@ export class TelegramClient {
   /**
    * Load user session from persistent storage
    * Returns both userId and sessionString if available
+   * Also loads JWT token into memory
    */
   async loadSession(): Promise<{ userId: string; sessionString: string } | null> {
     try {
-      const [[, userId], [, sessionString]] = await AsyncStorage.multiGet([
+      const [[, userId], [, sessionString], [, token]] = await AsyncStorage.multiGet([
         USER_ID_STORAGE_KEY,
-        SESSION_STRING_KEY
+        SESSION_STRING_KEY,
+        AUTH_TOKEN_KEY
       ]);
       
       if (userId && sessionString) {
         this.currentUserId = userId;
-        console.log('Session loaded successfully:', userId);
+        
+        // Load token into memory if exists
+        if (token) {
+          this.authToken = token;
+          console.log('Session and token loaded successfully:', userId);
+        } else {
+          console.log('Session loaded without token:', userId);
+        }
+        
         return { userId, sessionString };
       }
       return null;
@@ -107,24 +162,42 @@ export class TelegramClient {
   }
 
   /**
-   * Clear saved session
+   * Clear saved session and auth token
    */
   async clearSession(): Promise<void> {
     try {
-      await AsyncStorage.multiRemove([USER_ID_STORAGE_KEY, SESSION_STRING_KEY]);
+      await AsyncStorage.multiRemove([USER_ID_STORAGE_KEY, SESSION_STRING_KEY, AUTH_TOKEN_KEY]);
       this.currentUserId = null;
       this.authSessionString = null;
-      console.log('Session cleared successfully');
+      this.authToken = null;
+      console.log('Session and auth token cleared successfully');
     } catch (error) {
       console.error('Failed to clear session:', error);
     }
   }
 
   /**
+   * Get headers with authentication token
+   */
+  private getAuthHeaders(): HeadersInit {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (this.authToken) {
+      headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+    
+    return headers;
+  }
+
+  /**
    * Check if user is authenticated
    */
   isAuthenticated(): boolean {
-    return this.currentUserId !== null;
+    const isAuth = this.currentUserId !== null && this.authToken !== null;
+    console.log(`[TelegramClient] isAuthenticated: ${isAuth} (userId: ${this.currentUserId ? 'exists' : 'null'}, token: ${this.authToken ? 'exists' : 'null'})`);
+    return isAuth;
   }
 
   /**
@@ -132,11 +205,14 @@ export class TelegramClient {
    * Returns true if session is valid, false otherwise
    */
   async restoreSession(userId: string, sessionString: string): Promise<boolean> {
+    console.log('[TelegramClient] restoreSession called for userId:', userId);
+    
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
     }
 
     try {
+      console.log('[TelegramClient] Making restore session request to backend...');
       const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-restore-session`, {
         method: 'POST',
         headers: {
@@ -147,21 +223,24 @@ export class TelegramClient {
 
       if (!res.ok) {
         const body = await res.text();
-        console.error('restoreSession error:', body);
+        console.error('[TelegramClient] restoreSession error:', body);
         return false;
       }
 
-      const data = (await res.json()) as { success: boolean; valid: boolean };
+      const data = (await res.json()) as { success: boolean; valid: boolean; token?: string };
+      console.log('[TelegramClient] restoreSession response:', { success: data.success, valid: data.valid, hasToken: !!data.token });
       
-      if (data.success && data.valid) {
+      if (data.success && data.valid && data.token) {
         this.currentUserId = userId;
-        console.log('Session restored successfully');
+        await this.saveToken(data.token);
+        console.log('[TelegramClient] Session restored successfully with auth token');
         return true;
       }
       
+      console.log('[TelegramClient] Session restore failed - invalid response');
       return false;
     } catch (error) {
-      console.error('Failed to restore session:', error);
+      console.error('[TelegramClient] Failed to restore session:', error);
       return false;
     }
   }
@@ -256,6 +335,11 @@ export class TelegramClient {
     // Save session to persistent storage (userId + sessionString)
     await this.saveSession(phoneNumber, sessionString);
     
+    // Save JWT token
+    if (data.token) {
+      await this.saveToken(data.token);
+    }
+    
     // Clear auth session after successful sign in
     this.authSessionString = null;
 
@@ -306,6 +390,11 @@ export class TelegramClient {
     // Save session to persistent storage (userId + sessionString)
     await this.saveSession(phoneNumber, sessionString);
     
+    // Save JWT token
+    if (data.token) {
+      await this.saveToken(data.token);
+    }
+    
     // Clear auth session after successful sign in
     this.authSessionString = null;
 
@@ -317,19 +406,21 @@ export class TelegramClient {
    * This is fast and should be called first
    */
   async getChatsQuick(): Promise<TelegramChat[]> {
+    console.log('[TelegramClient] getChatsQuick called');
+    
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
     }
-    if (!this.currentUserId) {
-      throw new Error('Not authenticated');
+    if (!this.authToken) {
+      console.error('[TelegramClient] getChatsQuick: No auth token! userId:', this.currentUserId);
+      throw new Error('Not authenticated - no auth token');
     }
 
+    console.log('[TelegramClient] Making request to get chats with auth token');
     const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-get-chats-quick`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId: this.currentUserId, limit: 0 }),
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ limit: 0 }),
     }, 60000); // 1 minute timeout
 
     if (!res.ok) {
@@ -372,17 +463,15 @@ export class TelegramClient {
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
     }
-    if (!this.currentUserId) {
-      throw new Error('Not authenticated');
+    if (!this.authToken) {
+      throw new Error('Not authenticated - no auth token');
     }
 
     // Increase timeout to 5 minutes because counting all messages takes time
     const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-get-chats`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId: this.currentUserId, limit: 0 }),
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ limit: 0 }),
     }, 300000); // 5 minutes timeout
 
     if (!res.ok) {
@@ -427,16 +516,14 @@ export class TelegramClient {
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
     }
-    if (!this.currentUserId) {
-      throw new Error('Not authenticated');
+    if (!this.authToken) {
+      throw new Error('Not authenticated - no auth token');
     }
 
     const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-count-messages`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId: this.currentUserId, chatId, isPrivateChat }),
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ chatId, isPrivateChat }),
     }, 10000); // Reduced to 10 seconds (backend has 5s timeout)
 
     if (!res.ok) {
@@ -456,17 +543,15 @@ export class TelegramClient {
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
     }
-    if (!this.currentUserId) {
-      throw new Error('Not authenticated');
+    if (!this.authToken) {
+      throw new Error('Not authenticated - no auth token');
     }
 
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-get-profile-photo`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId: this.currentUserId, chatId }),
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ chatId }),
       }, 10000); // 10 second timeout
 
       if (!res.ok) {
@@ -490,16 +575,14 @@ export class TelegramClient {
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
     }
-    if (!this.currentUserId) {
-      throw new Error('Not authenticated');
+    if (!this.authToken) {
+      throw new Error('Not authenticated - no auth token');
     }
 
     const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-get-me`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId: this.currentUserId }),
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({}),
     }, 10000);
 
     if (!res.ok) {
@@ -525,17 +608,14 @@ export class TelegramClient {
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
     }
-    if (!this.currentUserId) {
-      throw new Error('Not authenticated');
+    if (!this.authToken) {
+      throw new Error('Not authenticated - no auth token');
     }
 
     const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-get-messages`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: this.getAuthHeaders(),
       body: JSON.stringify({
-        userId: this.currentUserId,
         chatId,
         limit,
       }),
@@ -575,17 +655,14 @@ export class TelegramClient {
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
     }
-    if (!this.currentUserId) {
-      throw new Error('Not authenticated');
+    if (!this.authToken) {
+      throw new Error('Not authenticated - no auth token');
     }
 
     const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-delete-messages`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: this.getAuthHeaders(),
       body: JSON.stringify({
-        userId: this.currentUserId,
         chatId,
         messageIds: options.messageIds,
         timeRange: options.timeRange,
@@ -654,7 +731,7 @@ export class TelegramClient {
       return true;
     }
 
-    if (!this.currentUserId) {
+    if (!this.authToken) {
       console.warn('Not authenticated, clearing local session only');
       await this.clearSession();
       return true;
@@ -664,10 +741,8 @@ export class TelegramClient {
       // Call backend to clear server-side session (which also unsubscribes)
       const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-logout`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId: this.currentUserId }),
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({}),
       }, 10000);
 
       if (!res.ok) {
