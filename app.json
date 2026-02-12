@@ -12,18 +12,24 @@
       "backgroundColor": "#0088cc"
     },
     "assetBundlePatterns": [
-      "**/*"
+      "assets/**/*"
     ],
+    "jsEngine": "hermes",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.telecleaner.app"
+      "bundleIdentifier": "com.telecleaner.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0088cc"
       },
-      "package": "com.telecleaner.app"
+      "package": "com.telecleaner.app",
+      "enableProguardInReleaseBuilds": true,
+      "enableShrinkResourcesInReleaseBuilds": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -37,8 +43,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "621a00e6-1dbf-4f57-992e-5f5d1f993271"
       }
-    }
+    },
+    "owner": "snorlaxida"
   }
 }
