@@ -83,7 +83,7 @@ export default function VerifyCodeScreen() {
       if (result.requires2FA) {
         router.push({
           pathname: '/(auth)/password',
-          params: { phoneNumber },
+          params: { phoneNumber, phoneCodeHash },
         });
       } else {
         router.replace('/(tabs)/chats');
@@ -142,6 +142,17 @@ export default function VerifyCodeScreen() {
         <TouchableOpacity onPress={handleResendCode} disabled={isLoading}>
           <Text className="text-telegram-blue text-center text-base">
             Didn't receive the code? Resend
+          </Text>
+        </TouchableOpacity>
+
+        {/* Back Button */}
+        <TouchableOpacity
+          onPress={() => router.replace('/(auth)/phone')}
+          className="mt-6"
+          disabled={isLoading}
+        >
+          <Text className="text-telegram-blue text-center text-base">
+            Go back
           </Text>
         </TouchableOpacity>
 

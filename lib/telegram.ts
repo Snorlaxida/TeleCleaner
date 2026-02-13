@@ -192,6 +192,17 @@ export class TelegramClient {
   }
 
   /**
+   * Handle authentication errors (401) by clearing session
+   */
+  private async handleAuthError(response: Response): Promise<void> {
+    if (response.status === 401) {
+      console.error('[TelegramClient] 401 Unauthorized - Session expired. Clearing session...');
+      await this.clearSession();
+      throw new Error('SESSION_EXPIRED');
+    }
+  }
+
+  /**
    * Check if user is authenticated
    */
   isAuthenticated(): boolean {
@@ -424,6 +435,7 @@ export class TelegramClient {
     }, 60000); // 1 minute timeout
 
     if (!res.ok) {
+      await this.handleAuthError(res);
       const body = await res.text();
       console.error('getChatsQuick error:', body);
       throw new Error('Failed to load chats');
@@ -475,6 +487,7 @@ export class TelegramClient {
     }, 300000); // 5 minutes timeout
 
     if (!res.ok) {
+      await this.handleAuthError(res);
       const body = await res.text();
       console.error('getChats error:', body);
       throw new Error('Failed to load chats');
@@ -527,6 +540,7 @@ export class TelegramClient {
     }, 10000); // Reduced to 10 seconds (backend has 5s timeout)
 
     if (!res.ok) {
+      await this.handleAuthError(res);
       const body = await res.text();
       console.error('getChatMessageCount error:', body);
       return 0;
@@ -555,6 +569,7 @@ export class TelegramClient {
       }, 10000); // 10 second timeout
 
       if (!res.ok) {
+        await this.handleAuthError(res);
         const body = await res.text();
         console.error('getChatProfilePhoto error:', body);
         return null;
@@ -586,6 +601,7 @@ export class TelegramClient {
     }, 10000);
 
     if (!res.ok) {
+      await this.handleAuthError(res);
       const body = await res.text();
       console.error('getMe error:', body);
       throw new Error('Failed to get user info');
@@ -622,6 +638,7 @@ export class TelegramClient {
     }, 30000);
 
     if (!res.ok) {
+      await this.handleAuthError(res);
       const body = await res.text();
       console.error('getMessages error:', body);
       throw new Error('Failed to load messages');
@@ -672,6 +689,7 @@ export class TelegramClient {
     }, 60000); // 60 second timeout for potentially large deletions
 
     if (!res.ok) {
+      await this.handleAuthError(res);
       const body = await res.text();
       console.error('deleteMessages error:', body);
       throw new Error('Failed to delete messages');

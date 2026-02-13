@@ -114,6 +114,14 @@ export default function ChatsScreen() {
         setAvatarCache(newAvatarCache);
       } catch (error) {
         console.error(error);
+        
+        // Check if session expired
+        if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
+          console.log('[Chats] Session expired, redirecting to login...');
+          router.replace('/(auth)/phone');
+          return;
+        }
+        
         setErrorMessage('Failed to load chats from Telegram.');
         setShowErrorDialog(true);
         setIsLoadingChats(false);
@@ -214,6 +222,14 @@ export default function ChatsScreen() {
       }
     } catch (error) {
       console.error('Failed to refresh chats:', error);
+      
+      // Check if session expired
+      if (error instanceof Error && error.message === 'SESSION_EXPIRED') {
+        console.log('[Chats] Session expired during refresh, redirecting to login...');
+        router.replace('/(auth)/phone');
+        return;
+      }
+      
       setErrorMessage('Failed to refresh chats.');
       setShowErrorDialog(true);
     } finally {

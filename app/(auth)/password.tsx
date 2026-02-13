@@ -7,8 +7,9 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function TwoFactorAuthScreen() {
   const router = useRouter();
-  const { phoneNumber } = useLocalSearchParams<{
+  const { phoneNumber, phoneCodeHash } = useLocalSearchParams<{
     phoneNumber: string;
+    phoneCodeHash?: string;
   }>();
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -118,7 +119,18 @@ export default function TwoFactorAuthScreen() {
 
         {/* Back Button */}
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => {
+            // If we have phoneCodeHash, go back to verify screen
+            // Otherwise, go back to phone screen to start over
+            if (phoneCodeHash && phoneNumber) {
+              router.replace({
+                pathname: '/(auth)/verify',
+                params: { phoneNumber, phoneCodeHash },
+              });
+            } else {
+              router.replace('/(auth)/phone');
+            }
+          }}
           className="mt-6"
           disabled={isLoading}
         >
