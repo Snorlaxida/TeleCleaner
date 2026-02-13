@@ -1,6 +1,8 @@
 import { View, Text, TouchableOpacity, Modal, Platform } from 'react-native';
 import { useState, useEffect } from 'react';
 import { CustomDateRange } from '@/app/(tabs)/chats';
+import { useTheme } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
 
 interface DateRangePickerProps {
   visible: boolean;
@@ -9,6 +11,8 @@ interface DateRangePickerProps {
 }
 
 export default function DateRangePicker({ visible, onClose, onConfirm }: DateRangePickerProps) {
+  const { colors } = useTheme();
+  const { t } = useTranslation();
   const [startDate, setStartDate] = useState(new Date());
   const [endDate, setEndDate] = useState(new Date());
   const [selectingStart, setSelectingStart] = useState(true);
@@ -100,9 +104,16 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
            date.toDateString() === endDate.toDateString();
   };
 
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'];
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthNames = [
+    t('january'), t('february'), t('march'), t('april'),
+    t('may'), t('june'), t('july'), t('august'),
+    t('september'), t('october'), t('november'), t('december')
+  ];
+  
+  const dayNames = [
+    t('sun'), t('mon'), t('tue'), t('wed'), 
+    t('thu'), t('fri'), t('sat')
+  ];
 
   return (
     <Modal
@@ -112,33 +123,66 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
       onRequestClose={onClose}
     >
       <TouchableOpacity 
-        className="flex-1 bg-black/50 justify-end"
+        className="flex-1 justify-end"
+        style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
         activeOpacity={1}
         onPress={onClose}
       >
-        <View className="bg-white rounded-t-3xl pb-6" onStartShouldSetResponder={() => true}>
+        <View 
+          className="rounded-t-3xl pb-6" 
+          style={{ backgroundColor: colors.cardBackground }}
+          onStartShouldSetResponder={() => true}
+        >
           {/* Header */}
-          <View className="px-6 py-4 border-b border-gray-200">
-            <Text className="text-xl font-bold text-gray-900 text-center">
-              Select Date Range
+          <View 
+            className="px-6 py-4 border-b"
+            style={{ borderBottomColor: colors.border }}
+          >
+            <Text 
+              className="text-xl font-bold text-center"
+              style={{ color: colors.text }}
+            >
+              {t('selectDateRange')}
             </Text>
-            <Text className="text-sm text-gray-500 text-center mt-1">
-              {selectingStart ? 'Select start date' : 'Select end date'}
+            <Text 
+              className="text-sm text-center mt-1"
+              style={{ color: colors.secondaryText }}
+            >
+              {selectingStart ? t('selectStartDate') : t('selectEndDate')}
             </Text>
           </View>
 
           {/* Selected Range Display */}
-          <View className="px-6 py-3 bg-gray-50">
+          <View 
+            className="px-6 py-3"
+            style={{ backgroundColor: colors.secondaryBackground }}
+          >
             <View className="flex-row justify-between mb-2">
               <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1">Start Date</Text>
-                <Text className="text-base font-semibold text-gray-900">
+                <Text 
+                  className="text-xs mb-1"
+                  style={{ color: colors.secondaryText }}
+                >
+                  {t('startDate')}
+                </Text>
+                <Text 
+                  className="text-base font-semibold"
+                  style={{ color: colors.text }}
+                >
                   {startDate.toLocaleDateString()}
                 </Text>
               </View>
               <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1">End Date</Text>
-                <Text className="text-base font-semibold text-gray-900">
+                <Text 
+                  className="text-xs mb-1"
+                  style={{ color: colors.secondaryText }}
+                >
+                  {t('endDate')}
+                </Text>
+                <Text 
+                  className="text-base font-semibold"
+                  style={{ color: colors.text }}
+                >
                   {endDate.toLocaleDateString()}
                 </Text>
               </View>
@@ -146,10 +190,14 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
             {!selectingStart && (
               <TouchableOpacity 
                 onPress={resetSelection}
-                className="py-2 px-3 bg-telegram-blue/10 rounded-lg"
+                className="py-2 px-3 rounded-lg"
+                style={{ backgroundColor: colors.secondaryBackground }}
               >
-                <Text className="text-telegram-blue text-center text-sm font-semibold">
-                  ↻ Change Start Date
+                <Text 
+                  className="text-center text-sm font-semibold"
+                  style={{ color: colors.primary }}
+                >
+                  {t('changeStartDate')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -158,13 +206,16 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
           {/* Month Navigation */}
           <View className="px-6 py-4 flex-row justify-between items-center">
             <TouchableOpacity onPress={previousMonth} className="p-2">
-              <Text className="text-2xl text-telegram-blue">←</Text>
+              <Text className="text-2xl" style={{ color: colors.primary }}>←</Text>
             </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-900">
+            <Text 
+              className="text-lg font-semibold"
+              style={{ color: colors.text }}
+            >
               {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
             </Text>
             <TouchableOpacity onPress={nextMonth} className="p-2">
-              <Text className="text-2xl text-telegram-blue">→</Text>
+              <Text className="text-2xl" style={{ color: colors.primary }}>→</Text>
             </TouchableOpacity>
           </View>
 
@@ -174,7 +225,12 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
             <View className="flex-row mb-2">
               {dayNames.map(day => (
                 <View key={day} className="flex-1 items-center">
-                  <Text className="text-xs font-semibold text-gray-500">{day}</Text>
+                  <Text 
+                    className="text-xs font-semibold"
+                    style={{ color: colors.secondaryText }}
+                  >
+                    {day}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -186,21 +242,26 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
                   {date ? (
                     <TouchableOpacity
                       onPress={() => handleDateSelect(date)}
-                      className={`flex-1 items-center justify-center rounded-lg ${
-                        isDateSelected(date)
-                          ? 'bg-telegram-blue'
+                      className="flex-1 items-center justify-center rounded-lg"
+                      style={{
+                        backgroundColor: isDateSelected(date)
+                          ? colors.primary
                           : isDateInRange(date)
-                          ? 'bg-telegram-lightBlue/30'
-                          : ''
-                      }`}
+                          ? colors.secondaryBackground
+                          : 'transparent'
+                      }}
                     >
-                      <Text className={`text-sm ${
-                        isDateSelected(date)
-                          ? 'text-white font-bold'
-                          : isDateInRange(date)
-                          ? 'text-telegram-blue font-semibold'
-                          : 'text-gray-900'
-                      }`}>
+                      <Text 
+                        className="text-sm"
+                        style={{
+                          color: isDateSelected(date)
+                            ? '#ffffff'
+                            : isDateInRange(date)
+                            ? colors.primary
+                            : colors.text,
+                          fontWeight: isDateSelected(date) ? 'bold' : isDateInRange(date) ? '600' : 'normal'
+                        }}
+                      >
                         {date.getDate()}
                       </Text>
                     </TouchableOpacity>
@@ -215,19 +276,24 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
           {/* Action Buttons */}
           <View className="px-6 pt-4 flex-row gap-3">
             <TouchableOpacity
-              className="flex-1 py-3 bg-gray-100 rounded-lg"
+              className="flex-1 py-3 rounded-lg"
+              style={{ backgroundColor: colors.secondaryBackground }}
               onPress={onClose}
             >
-              <Text className="text-center text-base font-semibold text-gray-700">
-                Cancel
+              <Text 
+                className="text-center text-base font-semibold"
+                style={{ color: colors.text }}
+              >
+                {t('cancel')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className="flex-1 py-3 bg-telegram-blue rounded-lg"
+              className="flex-1 py-3 rounded-lg"
+              style={{ backgroundColor: colors.primary }}
               onPress={handleConfirm}
             >
               <Text className="text-center text-base font-semibold text-white">
-                Confirm
+                {t('confirm')}
               </Text>
             </TouchableOpacity>
           </View>

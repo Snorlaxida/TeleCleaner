@@ -4,14 +4,22 @@ import { useEffect, useState } from 'react';
 import { telegramClient } from '@/lib/telegram';
 import Constants from 'expo-constants';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import SelectionModal from '@/components/SelectionModal';
+import { useTheme, ThemeMode } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
+import { saveLanguage } from '@/lib/i18n';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { colors, themeMode, setThemeMode } = useTheme();
+  const { t, i18n } = useTranslation();
   const [userInfo, setUserInfo] = useState<{ phone?: string; username?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
 
   // Get app version from package.json via expo-constants
   const appVersion = Constants.expoConfig?.version || '1.0.0';
@@ -47,13 +55,35 @@ export default function SettingsScreen() {
       router.replace('/(auth)/phone');
     } catch (error) {
       console.error('Logout error:', error);
-      setErrorMessage('Failed to logout properly, but local session was cleared.');
+      setErrorMessage(t('logoutError'));
       setShowErrorDialog(true);
       // Still redirect to login even on error
       setTimeout(() => {
         router.replace('/(auth)/phone');
       }, 2000);
     }
+  };
+
+  const handleThemeChange = (mode: string) => {
+    setThemeMode(mode as ThemeMode);
+  };
+
+  const handleLanguageChange = async (lang: string) => {
+    await saveLanguage(lang);
+    i18n.changeLanguage(lang);
+  };
+
+  const getThemeLabel = () => {
+    switch (themeMode) {
+      case 'system': return t('themeSystem');
+      case 'light': return t('themeLight');
+      case 'dark': return t('themeDark');
+      default: return t('themeSystem');
+    }
+  };
+
+  const getLanguageLabel = () => {
+    return i18n.language === 'ru' ? t('languageRussian') : t('languageEnglish');
   };
 
   const SettingItem = ({ 
@@ -68,53 +98,96 @@ export default function SettingsScreen() {
     destructive?: boolean;
   }) => (
     <TouchableOpacity
-      className="bg-white px-4 py-4 border-b border-gray-200"
+      className="px-4 py-4 border-b"
+      style={{ 
+        backgroundColor: colors.cardBackground,
+        borderBottomColor: colors.border 
+      }}
       onPress={onPress}
     >
-      <Text className={`text-base font-semibold ${destructive ? 'text-red-500' : 'text-gray-900'}`}>
+      <Text 
+        className="text-base font-semibold"
+        style={{ color: destructive ? colors.destructive : colors.text }}
+      >
         {title}
       </Text>
       {subtitle && (
-        <Text className="text-sm text-gray-500 mt-1">{subtitle}</Text>
+        <Text className="text-sm mt-1" style={{ color: colors.secondaryText }}>
+          {subtitle}
+        </Text>
       )}
     </TouchableOpacity>
   );
 
   if (isLoading) {
     return (
-      <View className="flex-1 bg-gray-100 items-center justify-center">
-        <ActivityIndicator size="large" color="#0088cc" />
-        <Text className="mt-4 text-gray-500">Loading settings...</Text>
+      <View 
+        className="flex-1 items-center justify-center"
+        style={{ backgroundColor: colors.background }}
+      >
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text className="mt-4" style={{ color: colors.secondaryText }}>
+          {t('loadingSettings')}
+        </Text>
       </View>
     );
   }
 
   return (
-    <ScrollView className="flex-1 bg-gray-100">
+    <ScrollView 
+      className="flex-1"
+      style={{ backgroundColor: colors.secondaryBackground }}
+    >
       {/* Account Section */}
       <View className="mt-6">
-        <Text className="text-sm font-semibold text-gray-500 px-4 mb-2">
-          ACCOUNT
+        <Text 
+          className="text-sm font-semibold px-4 mb-2"
+          style={{ color: colors.secondaryText }}
+        >
+          {t('account')}
         </Text>
         <SettingItem
-          title="Phone Number"
-          subtitle={userInfo?.phone ? `+${userInfo.phone}` : 'Not available'}
+          title={t('phoneNumber')}
+          subtitle={userInfo?.phone ? `+${userInfo.phone}` : t('notAvailable')}
           onPress={() => {}}
         />
         <SettingItem
-          title="Username"
-          subtitle={userInfo?.username ? `@${userInfo.username}` : 'No username'}
+          title={t('username')}
+          subtitle={userInfo?.username ? `@${userInfo.username}` : t('noUsername')}
           onPress={() => {}}
+        />
+      </View>
+
+      {/* Appearance Section */}
+      <View className="mt-6">
+        <Text 
+          className="text-sm font-semibold px-4 mb-2"
+          style={{ color: colors.secondaryText }}
+        >
+          {t('appearance')}
+        </Text>
+        <SettingItem
+          title={t('theme')}
+          subtitle={getThemeLabel()}
+          onPress={() => setShowThemeModal(true)}
+        />
+        <SettingItem
+          title={t('language')}
+          subtitle={getLanguageLabel()}
+          onPress={() => setShowLanguageModal(true)}
         />
       </View>
 
       {/* About */}
       <View className="mt-6">
-        <Text className="text-sm font-semibold text-gray-500 px-4 mb-2">
-          ABOUT
+        <Text 
+          className="text-sm font-semibold px-4 mb-2"
+          style={{ color: colors.secondaryText }}
+        >
+          {t('about')}
         </Text>
         <SettingItem
-          title="Version"
+          title={t('version')}
           subtitle={appVersion}
           onPress={() => {}}
         />
@@ -123,7 +196,7 @@ export default function SettingsScreen() {
       {/* Logout */}
       <View className="mt-6 mb-8">
         <SettingItem
-          title="Logout"
+          title={t('logout')}
           onPress={handleLogout}
           destructive
         />
@@ -131,34 +204,61 @@ export default function SettingsScreen() {
 
       {/* Footer */}
       <View className="items-center pb-8">
-        <Text className="text-gray-400 text-sm">
+        <Text className="text-sm" style={{ color: colors.secondaryText }}>
           TeleCleaner v{appVersion}
         </Text>
-        <Text className="text-gray-400 text-xs mt-1">
-          Made with ❤️ for Telegram users
+        <Text className="text-xs mt-1" style={{ color: colors.secondaryText }}>
+          {t('madeWithLove')}
         </Text>
       </View>
+
+      {/* Theme Selection Modal */}
+      <SelectionModal
+        visible={showThemeModal}
+        title={t('theme')}
+        options={[
+          { value: 'system', label: t('themeSystem') },
+          { value: 'light', label: t('themeLight') },
+          { value: 'dark', label: t('themeDark') },
+        ]}
+        selectedValue={themeMode}
+        onSelect={handleThemeChange}
+        onClose={() => setShowThemeModal(false)}
+      />
+
+      {/* Language Selection Modal */}
+      <SelectionModal
+        visible={showLanguageModal}
+        title={t('language')}
+        options={[
+          { value: 'en', label: t('languageEnglish') },
+          { value: 'ru', label: t('languageRussian') },
+        ]}
+        selectedValue={i18n.language}
+        onSelect={handleLanguageChange}
+        onClose={() => setShowLanguageModal(false)}
+      />
 
       {/* Logout Confirmation Dialog */}
       <ConfirmDialog
         visible={showLogoutDialog}
-        title="Logout"
-        message="Are you sure you want to logout?"
+        title={t('logout')}
+        message={t('areYouSureLogout')}
         onClose={() => setShowLogoutDialog(false)}
         onConfirm={confirmLogout}
-        confirmText="Logout"
-        cancelText="Cancel"
+        confirmText={t('logout')}
+        cancelText={t('cancel')}
         confirmDestructive
       />
 
       {/* Error Dialog */}
       <ConfirmDialog
         visible={showErrorDialog}
-        title="Error"
+        title={t('error')}
         message={errorMessage}
         onClose={() => setShowErrorDialog(false)}
         onConfirm={() => setShowErrorDialog(false)}
-        confirmText="OK"
+        confirmText={t('ok')}
         cancelText=""
       />
     </ScrollView>

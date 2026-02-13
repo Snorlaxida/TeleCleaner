@@ -5,6 +5,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import ChatListItem from '@/components/ChatListItem';
 import { telegramClient, TelegramChat } from '@/lib/telegram';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { useTheme } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
 
 export type DeletionOption = 'last_day' | 'last_week' | 'all' | 'custom';
 
@@ -16,6 +18,8 @@ export interface CustomDateRange {
 export default function ChatsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { colors } = useTheme();
+  const { t } = useTranslation();
   const [chats, setChats] = useState<TelegramChat[]>([]);
   const [filteredChats, setFilteredChats] = useState<TelegramChat[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,7 +84,7 @@ export default function ChatsScreen() {
             ]);
 
             // Cache the avatar
-            const finalAvatar = photo || chat.avatar;
+            const finalAvatar = photo || chat.avatar || '💬';
             newAvatarCache.set(chat.id, finalAvatar);
 
             return { 
@@ -122,7 +126,7 @@ export default function ChatsScreen() {
           return;
         }
         
-        setErrorMessage('Failed to load chats from Telegram.');
+        setErrorMessage(t('error'));
         setShowErrorDialog(true);
         setIsLoadingChats(false);
       }
@@ -230,7 +234,7 @@ export default function ChatsScreen() {
         return;
       }
       
-      setErrorMessage('Failed to refresh chats.');
+      setErrorMessage(t('error'));
       setShowErrorDialog(true);
     } finally {
       setIsRefreshing(false);
@@ -239,7 +243,7 @@ export default function ChatsScreen() {
 
   const handleConfirmSelection = () => {
     if (selectedChats.size === 0) {
-      setErrorMessage('Please select at least one chat.');
+      setErrorMessage(t('selectAtLeastOneChat'));
       setShowErrorDialog(true);
       return;
     }
@@ -263,48 +267,69 @@ export default function ChatsScreen() {
   };
 
   return (
-    <View className="flex-1 bg-white">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
       {/* Search Bar */}
-      <View className="bg-gray-50 px-4 pt-3 pb-2 border-b border-gray-200">
-        <View className="bg-white rounded-lg border border-gray-300 flex-row items-center px-3 py-2">
-          <Text className="text-gray-400 mr-2">🔍</Text>
+      <View 
+        className="px-4 pt-3 pb-2 border-b" 
+        style={{ 
+          backgroundColor: colors.secondaryBackground,
+          borderBottomColor: colors.border 
+        }}
+      >
+        <View 
+          className="rounded-lg border flex-row items-center px-3 py-2"
+          style={{ 
+            backgroundColor: colors.background,
+            borderColor: colors.border 
+          }}
+        >
+          <Text style={{ color: colors.secondaryText }} className="mr-2">🔍</Text>
           <TextInput
-            className="flex-1 text-base text-gray-900"
-            placeholder="Search chats..."
-            placeholderTextColor="#9CA3AF"
+            className="flex-1 text-base"
+            style={{ color: colors.text }}
+            placeholder={t('search')}
+            placeholderTextColor={colors.secondaryText}
             value={searchQuery}
             onChangeText={setSearchQuery}
             editable={!isLoadingChats}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Text className="text-gray-400 text-lg">✕</Text>
+              <Text className="text-lg" style={{ color: colors.secondaryText }}>✕</Text>
             </TouchableOpacity>
           )}
         </View>
       </View>
 
       {/* Select All Button */}
-      <View className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+      <View 
+        className="px-4 py-3 border-b"
+        style={{ 
+          backgroundColor: colors.secondaryBackground,
+          borderBottomColor: colors.border 
+        }}
+      >
         <View className="flex-row gap-2">
           <TouchableOpacity
-            className="flex-1 bg-telegram-blue py-3 rounded-lg"
+            className="flex-1 py-3 rounded-lg"
+            style={{ backgroundColor: colors.primary }}
             onPress={selectedChats.size === filteredChats.length ? deselectAllChats : selectAllChats}
             disabled={filteredChats.length === 0 || isLoadingChats}
           >
             <Text className="text-white text-center font-semibold">
               {isLoadingChats
-                ? 'Loading...'
+                ? t('loading')
                 : filteredChats.length === 0
-                ? 'No chats'
+                ? t('noChatsAvailable')
                 : selectedChats.size === filteredChats.length
-                ? '✓ Deselect All'
-                : 'Select All Chats'}
+                ? '✓ ' + t('cancel')
+                : t('selectChats')}
             </Text>
           </TouchableOpacity>
           {Platform.OS === 'web' && !isLoadingChats && (
             <TouchableOpacity
-              className="bg-green-500 py-3 px-4 rounded-lg"
+              className="py-3 px-4 rounded-lg"
+              style={{ backgroundColor: colors.success }}
               onPress={handleRefreshChats}
               disabled={isRefreshing}
             >
@@ -318,28 +343,47 @@ export default function ChatsScreen() {
 
       {/* Header with selection count */}
       {selectedChats.size > 0 && (
-        <View className="bg-telegram-lightBlue px-4 py-3 flex-row justify-between items-center">
+        <View 
+          className="px-4 py-3 flex-row justify-between items-center"
+          style={{ backgroundColor: colors.primary }}
+        >
           <Text className="text-white font-semibold">
-            {selectedChats.size} chat{selectedChats.size > 1 ? 's' : ''} selected
+            {t('selected')}: {selectedChats.size}
           </Text>
           <TouchableOpacity onPress={deselectAllChats}>
-            <Text className="text-white font-semibold">Clear</Text>
+            <Text className="text-white font-semibold">{t('cancel')}</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {/* Chat List */}
       {isLoadingChats ? (
-        <View className="flex-1 items-center justify-center px-8">
-          <ActivityIndicator size="large" color="#0088cc" />
-          <Text className="mt-4 text-gray-700 font-semibold text-lg">Loading chats...</Text>
-          <Text className="mt-2 text-gray-500 text-center">
-            Counting your messages in each chat.{'\n'}This may take a few minutes.
+        <View 
+          className="flex-1 items-center justify-center px-8"
+          style={{ backgroundColor: colors.background }}
+        >
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text 
+            className="mt-4 font-semibold text-lg"
+            style={{ color: colors.text }}
+          >
+            {t('loadingChats')}
           </Text>
-          <View className="mt-6 bg-blue-50 p-4 rounded-lg">
-            <Text className="text-gray-600 text-sm text-center">
-              💡 Tip: We're analyzing all your messages to show accurate counts.{'\n'}
-              Please be patient.
+          <Text 
+            className="mt-2 text-center"
+            style={{ color: colors.secondaryText }}
+          >
+            {t('loading')}
+          </Text>
+          <View 
+            className="mt-6 p-4 rounded-lg"
+            style={{ backgroundColor: colors.secondaryBackground }}
+          >
+            <Text 
+              className="text-sm text-center"
+              style={{ color: colors.secondaryText }}
+            >
+              💡 {t('loading')}
             </Text>
           </View>
         </View>
@@ -363,21 +407,21 @@ export default function ChatsScreen() {
             />
           )}
           ItemSeparatorComponent={() => (
-            <View className="h-px bg-gray-200 ml-16" />
+            <View className="h-px ml-16" style={{ backgroundColor: colors.border }} />
           )}
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center mt-10">
-              <Text className="text-gray-500">No chats found.</Text>
+              <Text style={{ color: colors.secondaryText }}>{t('noChatsAvailable')}</Text>
             </View>
           }
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefreshChats}
-              colors={['#0088cc']}
-              tintColor="#0088cc"
-              title="Updating chats..."
-              titleColor="#666"
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+              title={t('loading')}
+              titleColor={colors.secondaryText}
             />
           }
         />
@@ -385,13 +429,20 @@ export default function ChatsScreen() {
 
       {/* Confirm Selection Button */}
       {selectedChats.size > 0 && (
-        <View className="p-4 border-t border-gray-200">
+        <View 
+          className="p-4 border-t"
+          style={{ 
+            backgroundColor: colors.background,
+            borderTopColor: colors.border 
+          }}
+        >
           <TouchableOpacity
-            className="bg-telegram-blue py-4 rounded-lg"
+            className="py-4 rounded-lg"
+            style={{ backgroundColor: colors.primary }}
             onPress={handleConfirmSelection}
           >
             <Text className="text-white text-center text-lg font-semibold">
-              Confirm Selection
+              {t('next')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -400,11 +451,11 @@ export default function ChatsScreen() {
       {/* Error Dialog */}
       <ConfirmDialog
         visible={showErrorDialog}
-        title="Error"
+        title={t('error')}
         message={errorMessage}
         onClose={() => setShowErrorDialog(false)}
         onConfirm={() => setShowErrorDialog(false)}
-        confirmText="OK"
+        confirmText={t('ok')}
         cancelText=""
       />
     </View>

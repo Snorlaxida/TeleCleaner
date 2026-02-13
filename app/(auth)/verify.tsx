@@ -4,9 +4,13 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { telegramClient } from '@/lib/telegram';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { useTheme } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
 
 export default function VerifyCodeScreen() {
   const router = useRouter();
+  const { colors, colorScheme } = useTheme();
+  const { t } = useTranslation();
   const { phoneNumber, phoneCodeHash } = useLocalSearchParams<{
     phoneNumber: string;
     phoneCodeHash: string;
@@ -69,7 +73,7 @@ export default function VerifyCodeScreen() {
 
   const verifyCode = async (fullCode: string) => {
     if (!phoneNumber || !phoneCodeHash) {
-      setErrorMessage('Missing phone number or code hash.');
+      setErrorMessage(t('error'));
       setShowErrorDialog(true);
       return;
     }
@@ -90,7 +94,7 @@ export default function VerifyCodeScreen() {
       }
     } catch (error) {
       console.error(error);
-      setErrorMessage('The verification code you entered is incorrect.');
+      setErrorMessage(t('error'));
       setShowErrorDialog(true);
       setCode(['', '', '', '', '']);
       inputRefs.current[0]?.focus();
@@ -106,18 +110,25 @@ export default function VerifyCodeScreen() {
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1 bg-white"
+      className="flex-1"
+      style={{ backgroundColor: colors.background }}
     >
-      <StatusBar style="dark" />
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       
       <View className="flex-1 px-6 pt-20">
         {/* Header */}
         <View className="mb-12">
-          <Text className="text-4xl font-bold text-gray-900 mb-2">
+          <Text 
+            className="text-4xl font-bold mb-2"
+            style={{ color: colors.text }}
+          >
             {phoneNumber}
           </Text>
-          <Text className="text-gray-600 text-base">
-            We've sent you a code via Telegram
+          <Text 
+            className="text-base"
+            style={{ color: colors.secondaryText }}
+          >
+            {t('enterVerificationCode')}
           </Text>
         </View>
 
@@ -126,8 +137,15 @@ export default function VerifyCodeScreen() {
           {code.map((digit, index) => (
             <TextInput
               key={index}
-              ref={(ref) => (inputRefs.current[index] = ref)}
-              className="w-12 h-14 border-2 border-telegram-blue rounded-lg text-center text-2xl font-bold"
+              ref={(ref) => {
+                inputRefs.current[index] = ref;
+              }}
+              className="w-12 h-14 border-2 rounded-lg text-center text-2xl font-bold"
+              style={{ 
+                borderColor: colors.primary,
+                color: colors.text,
+                backgroundColor: colors.cardBackground
+              }}
               keyboardType="number-pad"
               value={digit}
               onChangeText={(text) => handleCodeChange(text, index)}
@@ -140,8 +158,11 @@ export default function VerifyCodeScreen() {
 
         {/* Resend Code */}
         <TouchableOpacity onPress={handleResendCode} disabled={isLoading}>
-          <Text className="text-telegram-blue text-center text-base">
-            Didn't receive the code? Resend
+          <Text 
+            className="text-center text-base"
+            style={{ color: colors.primary }}
+          >
+            {t('sendCode')}
           </Text>
         </TouchableOpacity>
 
@@ -151,15 +172,23 @@ export default function VerifyCodeScreen() {
           className="mt-6"
           disabled={isLoading}
         >
-          <Text className="text-telegram-blue text-center text-base">
-            Go back
+          <Text 
+            className="text-center text-base"
+            style={{ color: colors.primary }}
+          >
+            {t('cancel')}
           </Text>
         </TouchableOpacity>
 
         {/* Loading Indicator */}
         {isLoading && (
           <View className="mt-8">
-            <Text className="text-gray-500 text-center">Verifying...</Text>
+            <Text 
+              className="text-center"
+              style={{ color: colors.secondaryText }}
+            >
+              {t('loading')}
+            </Text>
           </View>
         )}
       </View>
@@ -167,22 +196,22 @@ export default function VerifyCodeScreen() {
       {/* Error Dialog */}
       <ConfirmDialog
         visible={showErrorDialog}
-        title="Invalid Code"
+        title={t('error')}
         message={errorMessage}
         onClose={() => setShowErrorDialog(false)}
         onConfirm={() => setShowErrorDialog(false)}
-        confirmText="OK"
+        confirmText={t('ok')}
         cancelText=""
       />
 
       {/* Success Dialog */}
       <ConfirmDialog
         visible={showSuccessDialog}
-        title="Code Sent"
-        message="A new verification code has been sent to your phone."
+        title={t('sendCode')}
+        message={t('enterVerificationCode')}
         onClose={() => setShowSuccessDialog(false)}
         onConfirm={() => setShowSuccessDialog(false)}
-        confirmText="OK"
+        confirmText={t('ok')}
         cancelText=""
       />
     </KeyboardAvoidingView>

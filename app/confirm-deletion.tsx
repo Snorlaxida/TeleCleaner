@@ -6,6 +6,8 @@ import { telegramClient, TelegramChat } from '@/lib/telegram';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { DeletionOption, CustomDateRange } from '@/app/(tabs)/chats';
 import DateRangePicker from '@/components/DateRangePicker';
+import { useTheme } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
 
 // Lightweight chat data structure (without heavy base64 avatars)
 interface LightweightChat {
@@ -19,6 +21,8 @@ export default function ConfirmDeletionScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
+  const { colors, colorScheme } = useTheme();
+  const { t } = useTranslation();
   
   // Parse selected chats from params (now lightweight - no base64 avatars)
   const selectedChatsData: LightweightChat[] = typeof params.chatsData === 'string' 
@@ -72,11 +76,11 @@ export default function ConfirmDeletionScreen() {
       }
 
       // Show success message
-      setSuccessMessage(`Messages successfully deleted from ${chats.length} chat${chats.length > 1 ? 's' : ''}!`);
+      setSuccessMessage(t('deletionCompleteMessage', { count: chats.length }));
       setShowSuccessDialog(true);
     } catch (error) {
       console.error('Failed to delete messages:', error);
-      setErrorMessage('Failed to delete messages. Please try again.');
+      setErrorMessage(t('deletionErrorMessage'));
       setShowErrorDialog(true);
     } finally {
       setIsDeleting(false);
@@ -98,10 +102,10 @@ export default function ConfirmDeletionScreen() {
     }
     
     const labels: Record<DeletionOption, string> = {
-      last_day: 'Last 24 Hours',
-      last_week: 'Last 7 Days',
-      all: 'All Messages',
-      custom: 'Custom Range',
+      last_day: t('last24Hours'),
+      last_week: t('last7Days'),
+      all: t('allMessages'),
+      custom: t('customRange'),
     };
     
     return labels[selectedTimeRange];
@@ -109,14 +113,14 @@ export default function ConfirmDeletionScreen() {
 
   const getTimeRangeDescription = () => {
     if (selectedTimeRange === 'custom' && customRange) {
-      return 'Custom date range';
+      return t('customDateRange');
     }
     
     const descriptions: Record<DeletionOption, string> = {
-      last_day: 'Messages from the last 24 hours',
-      last_week: 'Messages from the last 7 days',
-      all: 'All your messages in selected chats',
-      custom: 'Custom date range',
+      last_day: t('deleteFromLastDay'),
+      last_week: t('deleteFromLastWeek'),
+      all: t('deleteAllYourMessages'),
+      custom: t('customDateRange'),
     };
     
     return descriptions[selectedTimeRange];
@@ -124,9 +128,14 @@ export default function ConfirmDeletionScreen() {
 
   if (isLoading) {
     return (
-      <View className="flex-1 bg-white items-center justify-center">
-        <ActivityIndicator size="large" color="#0088cc" />
-        <Text className="mt-4 text-gray-600">Loading chats...</Text>
+      <View 
+        className="flex-1 items-center justify-center"
+        style={{ backgroundColor: colors.background }}
+      >
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text className="mt-4" style={{ color: colors.secondaryText }}>
+          {t('loadingChats')}
+        </Text>
       </View>
     );
   }
@@ -159,25 +168,36 @@ export default function ConfirmDeletionScreen() {
     
     return (
       <View 
-        className={`bg-gray-50 mx-4 border-x border-gray-200 ${
+        className={`mx-4 border-x ${
           isFirst ? 'border-t rounded-t-lg' : ''
         } ${isLast ? 'border-b rounded-b-lg' : ''}`}
+        style={{ 
+          backgroundColor: colors.secondaryBackground,
+          borderColor: colors.border 
+        }}
       >
         <View className="flex-row items-center py-3 px-3">
           {/* Avatar */}
-          <View className="w-10 h-10 rounded-full bg-telegram-lightBlue items-center justify-center mr-3">
+          <View 
+            className="w-10 h-10 rounded-full items-center justify-center mr-3"
+            style={{ backgroundColor: colors.primary }}
+          >
             <Text className={isEmoji ? "text-lg" : "text-base font-bold text-white"}>
               {avatar}
             </Text>
           </View>
           <View className="flex-1">
-            <Text className="text-base font-medium text-gray-900" numberOfLines={1}>
+            <Text 
+              className="text-base font-medium" 
+              style={{ color: colors.text }}
+              numberOfLines={1}
+            >
               {item.name}
             </Text>
           </View>
         </View>
         {!isLast && (
-          <View className="h-px bg-gray-200 ml-13" />
+          <View className="h-px ml-13" style={{ backgroundColor: colors.border }} />
         )}
       </View>
     );
@@ -186,8 +206,11 @@ export default function ConfirmDeletionScreen() {
   // Render header section (title)
   const renderListHeader = () => (
     <View className="px-4 py-4">
-      <Text className="text-lg font-semibold text-gray-900 mb-3">
-        Selected Chats ({chats.length})
+      <Text 
+        className="text-lg font-semibold mb-3"
+        style={{ color: colors.text }}
+      >
+        {t('selectedChats')} ({chats.length})
       </Text>
     </View>
   );
@@ -196,38 +219,49 @@ export default function ConfirmDeletionScreen() {
   const renderListFooter = () => (
     <>
       {/* Time Range Selection */}
-      <View className="px-4 py-4 border-t border-gray-200">
-        <Text className="text-lg font-semibold text-gray-900 mb-3">
-          Time Period
+      <View className="px-4 py-4 border-t" style={{ borderTopColor: colors.border }}>
+        <Text 
+          className="text-lg font-semibold mb-3"
+          style={{ color: colors.text }}
+        >
+          {t('timePeriod')}
         </Text>
         <View className="space-y-2">
           {[
-            { value: 'last_day' as DeletionOption, label: 'Last 24 Hours' },
-            { value: 'last_week' as DeletionOption, label: 'Last 7 Days' },
-            { value: 'custom' as DeletionOption, label: 'Custom Date Range' },
-            { value: 'all' as DeletionOption, label: 'All Messages' },
+            { value: 'last_day' as DeletionOption, label: t('last24Hours') },
+            { value: 'last_week' as DeletionOption, label: t('last7Days') },
+            { value: 'custom' as DeletionOption, label: t('customDateRange') },
+            { value: 'all' as DeletionOption, label: t('allMessages') },
           ].map((option) => (
             <TouchableOpacity
               key={option.value}
-              className={`p-4 rounded-lg border-2 ${
-                selectedTimeRange === option.value
-                  ? 'border-telegram-blue bg-telegram-lightBlue/10'
-                  : 'border-gray-200 bg-white'
-              }`}
+              className="p-4 rounded-lg border-2"
+              style={{
+                borderColor: selectedTimeRange === option.value ? colors.primary : colors.border,
+                backgroundColor: selectedTimeRange === option.value 
+                  ? colors.secondaryBackground 
+                  : colors.cardBackground
+              }}
               onPress={() => handleTimeRangeSelect(option.value)}
             >
               <View className="flex-row items-center justify-between">
-                <Text className={`text-base font-medium ${
-                  selectedTimeRange === option.value ? 'text-telegram-blue' : 'text-gray-900'
-                }`}>
+                <Text 
+                  className="text-base font-medium"
+                  style={{ 
+                    color: selectedTimeRange === option.value ? colors.primary : colors.text 
+                  }}
+                >
                   {option.label}
                 </Text>
                 {selectedTimeRange === option.value && (
-                  <Text className="text-telegram-blue text-lg">✓</Text>
+                  <Text className="text-lg" style={{ color: colors.primary }}>✓</Text>
                 )}
               </View>
               {selectedTimeRange === option.value && option.value === 'custom' && customRange && (
-                <Text className="text-sm text-gray-500 mt-2">
+                <Text 
+                  className="text-sm mt-2"
+                  style={{ color: colors.secondaryText }}
+                >
                   {customRange.startDate.toLocaleDateString()} - {customRange.endDate.toLocaleDateString()}
                 </Text>
               )}
@@ -238,12 +272,24 @@ export default function ConfirmDeletionScreen() {
 
       {/* Warning */}
       <View className="px-4 py-4">
-        <View className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <Text className="text-sm font-semibold text-red-800 mb-1">
-            ⚠️ Warning
+        <View 
+          className="border rounded-lg p-4"
+          style={{ 
+            backgroundColor: colorScheme === 'dark' ? '#3d1a1a' : '#fef2f2',
+            borderColor: colorScheme === 'dark' ? '#7f1d1d' : '#fecaca'
+          }}
+        >
+          <Text 
+            className="text-sm font-semibold mb-1"
+            style={{ color: colors.destructive }}
+          >
+            ⚠️ {t('warning')}
           </Text>
-          <Text className="text-sm text-red-700">
-            This action cannot be undone. Messages will be permanently deleted from Telegram.
+          <Text 
+            className="text-sm"
+            style={{ color: colors.destructive }}
+          >
+            {t('deletionWarning')}
           </Text>
         </View>
       </View>
@@ -251,7 +297,7 @@ export default function ConfirmDeletionScreen() {
   );
 
   return (
-    <View className="flex-1 bg-white">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
       {/* Main scrollable list with chats */}
       <FlatList
         data={chats}
@@ -268,13 +314,20 @@ export default function ConfirmDeletionScreen() {
 
       {/* Delete Button */}
       <View 
-        className="p-4 border-t border-gray-200 bg-white"
+        className="p-4 border-t"
         style={{ 
+          borderTopColor: colors.border,
+          backgroundColor: colors.background,
           paddingBottom: Platform.OS === 'android' ? Math.max(16, insets.bottom) : 16 
         }}
       >
         <TouchableOpacity
-          className={`py-4 rounded-lg ${isDeleting ? 'bg-red-300' : 'bg-red-500'}`}
+          className="py-4 rounded-lg"
+          style={{ 
+            backgroundColor: isDeleting 
+              ? (colorScheme === 'dark' ? '#7f1d1d' : '#fca5a5') 
+              : colors.destructive 
+          }}
           onPress={handleDeletePress}
           disabled={isDeleting}
         >
@@ -282,12 +335,12 @@ export default function ConfirmDeletionScreen() {
             <View className="flex-row items-center justify-center">
               <ActivityIndicator size="small" color="#fff" />
               <Text className="text-white text-center text-lg font-semibold ml-2">
-                Deleting...
+                {t('deleting')}
               </Text>
             </View>
           ) : (
             <Text className="text-white text-center text-lg font-semibold">
-              Delete Messages
+              {t('deleteMessages')}
             </Text>
           )}
         </TouchableOpacity>
@@ -303,34 +356,37 @@ export default function ConfirmDeletionScreen() {
       {/* Confirmation Dialog */}
       <ConfirmDialog
         visible={showConfirmDialog}
-        title="Confirm Deletion"
-        message={`Are you sure you want to delete messages from ${chats.length} chat${chats.length > 1 ? 's' : ''} for ${getTimeRangeText()}? This action cannot be undone.`}
+        title={t('confirmDeletion')}
+        message={t('deletionConfirmMessage', { 
+          count: chats.length, 
+          timeRange: getTimeRangeText() 
+        })}
         onClose={() => setShowConfirmDialog(false)}
         onConfirm={handleConfirmDeletion}
-        confirmText="Delete"
-        cancelText="Cancel"
+        confirmText={t('delete')}
+        cancelText={t('cancel')}
         confirmDestructive
       />
 
       {/* Success Dialog */}
       <ConfirmDialog
         visible={showSuccessDialog}
-        title="Success"
+        title={t('success')}
         message={successMessage}
         onClose={() => {}}
         onConfirm={handleSuccessConfirm}
-        confirmText="OK"
+        confirmText={t('ok')}
         cancelText=""
       />
 
       {/* Error Dialog */}
       <ConfirmDialog
         visible={showErrorDialog}
-        title="Error"
+        title={t('error')}
         message={errorMessage}
         onClose={() => setShowErrorDialog(false)}
         onConfirm={() => setShowErrorDialog(false)}
-        confirmText="OK"
+        confirmText={t('ok')}
         cancelText=""
       />
     </View>

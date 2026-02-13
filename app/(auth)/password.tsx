@@ -4,9 +4,13 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { telegramClient } from '@/lib/telegram';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { useTheme } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
 
 export default function TwoFactorAuthScreen() {
   const router = useRouter();
+  const { colors, colorScheme } = useTheme();
+  const { t } = useTranslation();
   const { phoneNumber, phoneCodeHash } = useLocalSearchParams<{
     phoneNumber: string;
     phoneCodeHash?: string;
@@ -19,13 +23,13 @@ export default function TwoFactorAuthScreen() {
 
   const handleVerifyPassword = async () => {
     if (!password) {
-      setErrorMessage('Please enter your 2FA password');
+      setErrorMessage(t('enterPassword'));
       setShowErrorDialog(true);
       return;
     }
 
     if (!phoneNumber) {
-      setErrorMessage('Missing phone number.');
+      setErrorMessage(t('error'));
       setShowErrorDialog(true);
       return;
     }
@@ -37,7 +41,7 @@ export default function TwoFactorAuthScreen() {
       router.replace('/(tabs)/chats');
     } catch (error) {
       console.error(error);
-      setErrorMessage('The 2FA password you entered is incorrect. Please try again.');
+      setErrorMessage(t('error'));
       setShowErrorDialog(true);
       setPassword('');
     } finally {
@@ -48,31 +52,45 @@ export default function TwoFactorAuthScreen() {
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1 bg-white"
+      className="flex-1"
+      style={{ backgroundColor: colors.background }}
     >
-      <StatusBar style="dark" />
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       
       <View className="flex-1 px-6 pt-20">
         {/* Header */}
         <View className="mb-12">
-          <Text className="text-4xl font-bold text-gray-900 mb-2">
-            Two-Factor Authentication
+          <Text 
+            className="text-4xl font-bold mb-2"
+            style={{ color: colors.text }}
+          >
+            {t('twoFactorAuth')}
           </Text>
-          <Text className="text-gray-600 text-base mb-4">
+          <Text 
+            className="text-base mb-4"
+            style={{ color: colors.secondaryText }}
+          >
             {phoneNumber}
           </Text>
-          <Text className="text-gray-600 text-base">
-            Your account has 2FA enabled. Please enter your password to continue.
+          <Text 
+            className="text-base"
+            style={{ color: colors.secondaryText }}
+          >
+            {t('enterPassword')}
           </Text>
         </View>
 
         {/* Password Input */}
         <View className="mb-8">
-          <View className="border-b border-telegram-blue pb-2">
+          <View 
+            className="border-b pb-2"
+            style={{ borderBottomColor: colors.primary }}
+          >
             <TextInput
-              className="text-lg text-gray-900"
-              placeholder="Enter your 2FA password"
-              placeholderTextColor="#8e8e93"
+              className="text-lg"
+              style={{ color: colors.text }}
+              placeholder={t('passwordPlaceholder')}
+              placeholderTextColor={colors.secondaryText}
               secureTextEntry={!showPassword}
               value={password}
               onChangeText={setPassword}
@@ -88,32 +106,41 @@ export default function TwoFactorAuthScreen() {
             onPress={() => setShowPassword(!showPassword)}
             className="mt-3"
           >
-            <Text className="text-telegram-blue text-sm">
-              {showPassword ? 'Hide' : 'Show'} password
+            <Text 
+              className="text-sm"
+              style={{ color: colors.primary }}
+            >
+              {showPassword ? t('cancel') : t('edit')}
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* Continue Button */}
         <TouchableOpacity
-          className={`py-4 rounded-lg ${
-            password.length > 0 && !isLoading
-              ? 'bg-telegram-blue'
-              : 'bg-gray-300'
-          }`}
+          className="py-4 rounded-lg"
+          style={{
+            backgroundColor: password.length > 0 && !isLoading
+              ? colors.primary
+              : colors.border
+          }}
           onPress={handleVerifyPassword}
           disabled={password.length === 0 || isLoading}
         >
           <Text className="text-white text-center text-lg font-semibold">
-            {isLoading ? 'Verifying...' : 'Continue'}
+            {isLoading ? t('loading') : t('submit')}
           </Text>
         </TouchableOpacity>
 
         {/* Info Text */}
-        <View className="mt-8 p-4 bg-blue-50 rounded-lg">
-          <Text className="text-gray-700 text-sm leading-5">
-            💡 This is the password you set up in Telegram's Privacy and Security settings, 
-            not your phone's password.
+        <View 
+          className="mt-8 p-4 rounded-lg"
+          style={{ backgroundColor: colors.secondaryBackground }}
+        >
+          <Text 
+            className="text-sm leading-5"
+            style={{ color: colors.secondaryText }}
+          >
+            💡 {t('twoFactorAuth')}
           </Text>
         </View>
 
@@ -134,8 +161,11 @@ export default function TwoFactorAuthScreen() {
           className="mt-6"
           disabled={isLoading}
         >
-          <Text className="text-telegram-blue text-center text-base">
-            Go back
+          <Text 
+            className="text-center text-base"
+            style={{ color: colors.primary }}
+          >
+            {t('cancel')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -143,11 +173,11 @@ export default function TwoFactorAuthScreen() {
       {/* Error Dialog */}
       <ConfirmDialog
         visible={showErrorDialog}
-        title="Error"
+        title={t('error')}
         message={errorMessage}
         onClose={() => setShowErrorDialog(false)}
         onConfirm={() => setShowErrorDialog(false)}
-        confirmText="OK"
+        confirmText={t('ok')}
         cancelText=""
       />
     </KeyboardAvoidingView>

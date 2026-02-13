@@ -4,9 +4,13 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { telegramClient } from '@/lib/telegram';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { useTheme } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
 
 export default function PhoneAuthScreen() {
   const router = useRouter();
+  const { colors, colorScheme } = useTheme();
+  const { t } = useTranslation();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
@@ -14,7 +18,7 @@ export default function PhoneAuthScreen() {
 
   const handleSendCode = async () => {
     if (!phoneNumber || phoneNumber.length < 10) {
-      setErrorMessage('Please enter a valid phone number');
+      setErrorMessage(t('enterPhoneNumber'));
       setShowErrorDialog(true);
       return;
     }
@@ -30,7 +34,7 @@ export default function PhoneAuthScreen() {
       });
     } catch (error) {
       console.error(error);
-      setErrorMessage('Failed to send verification code. Please try again.');
+      setErrorMessage(t('error'));
       setShowErrorDialog(true);
     } finally {
       setIsLoading(false);
@@ -40,28 +44,39 @@ export default function PhoneAuthScreen() {
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1 bg-white"
+      className="flex-1"
+      style={{ backgroundColor: colors.background }}
     >
-      <StatusBar style="dark" />
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       
       <View className="flex-1 px-6 pt-20">
         {/* Header */}
         <View className="mb-12">
-          <Text className="text-4xl font-bold text-gray-900 mb-2">
-            Your Phone
+          <Text 
+            className="text-4xl font-bold mb-2"
+            style={{ color: colors.text }}
+          >
+            {t('phoneAuth')}
           </Text>
-          <Text className="text-gray-600 text-base">
-            Please confirm your country code and enter your phone number
+          <Text 
+            className="text-base"
+            style={{ color: colors.secondaryText }}
+          >
+            {t('enterPhoneNumber')}
           </Text>
         </View>
 
         {/* Phone Input */}
         <View className="mb-8">
-          <View className="border-b border-telegram-blue pb-2">
+          <View 
+            className="border-b pb-2"
+            style={{ borderBottomColor: colors.primary }}
+          >
             <TextInput
-              className="text-lg text-gray-900"
-              placeholder="+1 234 567 8900"
-              placeholderTextColor="#8e8e93"
+              className="text-lg"
+              style={{ color: colors.text }}
+              placeholder={t('phoneNumberPlaceholder')}
+              placeholderTextColor={colors.secondaryText}
               keyboardType="phone-pad"
               value={phoneNumber}
               onChangeText={setPhoneNumber}
@@ -69,31 +84,37 @@ export default function PhoneAuthScreen() {
               editable={!isLoading}
             />
           </View>
-          <Text className="text-gray-500 text-sm mt-2">
-            We'll send you a code via Telegram
+          <Text 
+            className="text-sm mt-2"
+            style={{ color: colors.secondaryText }}
+          >
+            {t('enterVerificationCode')}
           </Text>
         </View>
 
         {/* Continue Button */}
         <TouchableOpacity
-          className={`py-4 rounded-lg ${
-            phoneNumber.length >= 10 && !isLoading
-              ? 'bg-telegram-blue'
-              : 'bg-gray-300'
-          }`}
+          className="py-4 rounded-lg"
+          style={{
+            backgroundColor: phoneNumber.length >= 10 && !isLoading
+              ? colors.primary
+              : colors.border
+          }}
           onPress={handleSendCode}
           disabled={phoneNumber.length < 10 || isLoading}
         >
           <Text className="text-white text-center text-lg font-semibold">
-            {isLoading ? 'Sending...' : 'Continue'}
+            {isLoading ? t('loading') : t('sendCode')}
           </Text>
         </TouchableOpacity>
 
         {/* Info Text */}
         <View className="mt-8">
-          <Text className="text-gray-500 text-sm text-center leading-5">
-            By continuing, you agree to receive a verification code via Telegram.
-            Standard messaging rates may apply.
+          <Text 
+            className="text-sm text-center leading-5"
+            style={{ color: colors.secondaryText }}
+          >
+            {t('enterVerificationCode')}
           </Text>
         </View>
       </View>
@@ -101,11 +122,11 @@ export default function PhoneAuthScreen() {
       {/* Error Dialog */}
       <ConfirmDialog
         visible={showErrorDialog}
-        title="Error"
+        title={t('error')}
         message={errorMessage}
         onClose={() => setShowErrorDialog(false)}
         onConfirm={() => setShowErrorDialog(false)}
-        confirmText="OK"
+        confirmText={t('ok')}
         cancelText=""
       />
     </KeyboardAvoidingView>

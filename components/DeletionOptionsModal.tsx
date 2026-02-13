@@ -2,6 +2,8 @@ import { View, Text, TouchableOpacity, Modal } from 'react-native';
 import { useState } from 'react';
 import { DeletionOption, CustomDateRange } from '@/app/(tabs)/chats';
 import DateRangePicker from './DateRangePicker';
+import { useTheme } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
 
 interface DeletionOptionsModalProps {
   visible: boolean;
@@ -14,6 +16,8 @@ export default function DeletionOptionsModal({
   onClose, 
   onSelectOption 
 }: DeletionOptionsModalProps) {
+  const { colors } = useTheme();
+  const { t } = useTranslation();
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Don't reset date picker when parent closes - it manages its own state
@@ -42,23 +46,23 @@ export default function DeletionOptionsModal({
   const options: { value: DeletionOption; label: string; description: string }[] = [
     {
       value: 'last_day',
-      label: 'Last 24 Hours',
-      description: 'Delete messages from the last day'
+      label: t('last24Hours'),
+      description: t('deleteFromLastDay')
     },
     {
       value: 'last_week',
-      label: 'Last 7 Days',
-      description: 'Delete messages from the last week'
+      label: t('last7Days'),
+      description: t('deleteFromLastWeek')
     },
     {
       value: 'custom',
-      label: 'Custom Date Range',
-      description: 'Choose specific start and end dates'
+      label: t('customDateRange'),
+      description: t('chooseSpecificDates')
     },
     {
       value: 'all',
-      label: 'All Messages',
-      description: 'Delete all your messages in selected chats'
+      label: t('allMessages'),
+      description: t('deleteAllYourMessages')
     }
   ];
 
@@ -71,18 +75,32 @@ export default function DeletionOptionsModal({
         onRequestClose={onClose}
       >
         <TouchableOpacity 
-          className="flex-1 bg-black/50 justify-end"
+          className="flex-1 justify-end"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
           activeOpacity={1}
           onPress={onClose}
         >
-          <View className="bg-white rounded-t-3xl" onStartShouldSetResponder={() => true}>
+          <View 
+            className="rounded-t-3xl" 
+            style={{ backgroundColor: colors.cardBackground }}
+            onStartShouldSetResponder={() => true}
+          >
             {/* Header */}
-            <View className="px-6 py-4 border-b border-gray-200">
-              <Text className="text-xl font-bold text-gray-900 text-center">
-                Select Time Range
+            <View 
+              className="px-6 py-4 border-b"
+              style={{ borderBottomColor: colors.border }}
+            >
+              <Text 
+                className="text-xl font-bold text-center"
+                style={{ color: colors.text }}
+              >
+                {t('selectTimeRange')}
               </Text>
-              <Text className="text-sm text-gray-500 text-center mt-1">
-                Choose which messages to delete
+              <Text 
+                className="text-sm text-center mt-1"
+                style={{ color: colors.secondaryText }}
+              >
+                {t('chooseWhichMessages')}
               </Text>
             </View>
 
@@ -91,15 +109,23 @@ export default function DeletionOptionsModal({
               {options.map((option, index) => (
                 <TouchableOpacity
                   key={option.value}
-                  className={`py-4 px-4 ${
-                    index < options.length - 1 ? 'border-b border-gray-100' : ''
-                  }`}
+                  className="py-4 px-4"
+                  style={{
+                    borderBottomWidth: index < options.length - 1 ? 1 : 0,
+                    borderBottomColor: colors.border
+                  }}
                   onPress={() => handleOptionSelect(option.value)}
                 >
-                  <Text className="text-lg font-semibold text-gray-900 mb-1">
+                  <Text 
+                    className="text-lg font-semibold mb-1"
+                    style={{ color: colors.text }}
+                  >
                     {option.label}
                   </Text>
-                  <Text className="text-sm text-gray-500">
+                  <Text 
+                    className="text-sm"
+                    style={{ color: colors.secondaryText }}
+                  >
                     {option.description}
                   </Text>
                 </TouchableOpacity>
@@ -109,11 +135,15 @@ export default function DeletionOptionsModal({
             {/* Cancel Button */}
             <View className="px-4 pb-6 pt-2">
               <TouchableOpacity
-                className="py-4 bg-gray-100 rounded-lg"
+                className="py-4 rounded-lg"
+                style={{ backgroundColor: colors.secondaryBackground }}
                 onPress={onClose}
               >
-                <Text className="text-center text-base font-semibold text-gray-700">
-                  Cancel
+                <Text 
+                  className="text-center text-base font-semibold"
+                  style={{ color: colors.text }}
+                >
+                  {t('cancel')}
                 </Text>
               </TouchableOpacity>
             </View>

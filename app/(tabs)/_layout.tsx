@@ -1,21 +1,25 @@
 import { Tabs } from 'expo-router';
-import { View, Text, Platform } from 'react-native';
+import { Text, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { useTheme } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const { t } = useTranslation();
   
   return (
     <ProtectedRoute>
       <Tabs
         screenOptions={{
-          tabBarActiveTintColor: '#0088cc',
-          tabBarInactiveTintColor: '#8e8e93',
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.tabBarInactive,
           tabBarStyle: {
-            backgroundColor: '#ffffff',
+            backgroundColor: colors.tabBarBackground,
             borderTopWidth: 1,
-            borderTopColor: '#e5e5ea',
+            borderTopColor: colors.border,
             height: 60 + (Platform.OS === 'android' ? insets.bottom : 0),
             paddingBottom: Platform.OS === 'android' ? insets.bottom : 2,
             paddingTop: 2,
@@ -28,7 +32,7 @@ export default function TabLayout() {
             marginBottom: 0,
           },
           headerStyle: {
-            backgroundColor: '#0088cc',
+            backgroundColor: colors.headerBackground,
           },
           headerTintColor: '#fff',
           headerTitleStyle: {
@@ -39,8 +43,8 @@ export default function TabLayout() {
         <Tabs.Screen
           name="chats"
           options={{
-            title: 'Chats',
-            tabBarIcon: ({ color, size }) => (
+            title: t('chats'),
+            tabBarIcon: ({ color }) => (
               <Text style={{ fontSize: 20, color }}>💬</Text>
             ),
           }}
@@ -48,8 +52,8 @@ export default function TabLayout() {
         <Tabs.Screen
           name="settings"
           options={{
-            title: 'Settings',
-            tabBarIcon: ({ color, size }) => (
+            title: t('settings'),
+            tabBarIcon: ({ color }) => (
               <Text style={{ fontSize: 20, color }}>⚙️</Text>
             ),
           }}

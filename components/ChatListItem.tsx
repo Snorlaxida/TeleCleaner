@@ -1,4 +1,6 @@
 import { View, Text, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { useTheme } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
 
 interface Chat {
   id: string;
@@ -17,6 +19,8 @@ interface ChatListItemProps {
 }
 
 export default function ChatListItem({ chat, isSelected, onToggle }: ChatListItemProps) {
+  const { colors } = useTheme();
+  const { t } = useTranslation();
   // Generate background color based on chat name for variety
   const getAvatarColor = (name: string): string => {
     const colors = [
@@ -39,13 +43,19 @@ export default function ChatListItem({ chat, isSelected, onToggle }: ChatListIte
 
   return (
     <TouchableOpacity
-      className="flex-row items-center px-4 py-3 bg-white active:bg-gray-50"
+      className="flex-row items-center px-4 py-3"
+      style={{ backgroundColor: colors.cardBackground }}
       onPress={onToggle}
     >
       {/* Checkbox */}
-      <View className={`w-6 h-6 rounded-full border-2 mr-3 items-center justify-center ${
-        isSelected ? 'bg-telegram-blue border-telegram-blue' : 'border-gray-300'
-      }`}>
+      <View 
+        className="w-6 h-6 rounded-full border-2 mr-3 items-center justify-center"
+        style={{
+          backgroundColor: isSelected ? colors.primary : 'transparent',
+          borderColor: isSelected ? colors.primary : colors.secondaryText,
+          borderWidth: 2
+        }}
+      >
         {isSelected && (
           <Text className="text-white text-xs font-bold">✓</Text>
         )}
@@ -54,7 +64,7 @@ export default function ChatListItem({ chat, isSelected, onToggle }: ChatListIte
       {/* Avatar */}
       <View className={`w-12 h-12 rounded-full items-center justify-center mr-3 overflow-hidden ${bgColor}`}>
         {chat.avatarLoading ? (
-          <ActivityIndicator size="small" color="#0088cc" />
+          <ActivityIndicator size="small" color={colors.primary} />
         ) : isBase64Image ? (
           <Image 
             source={{ uri: chat.avatar }} 
@@ -71,24 +81,50 @@ export default function ChatListItem({ chat, isSelected, onToggle }: ChatListIte
       {/* Chat Info */}
       <View className="flex-1">
         <View className="flex-row justify-between items-center mb-1">
-          <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+          <Text 
+            className="text-base font-semibold" 
+            style={{ color: colors.text }}
+            numberOfLines={1}
+          >
             {chat.name}
           </Text>
-          <Text className="text-xs text-gray-500">{chat.timestamp}</Text>
+          <Text 
+            className="text-xs" 
+            style={{ color: colors.secondaryText }}
+          >
+            {chat.timestamp}
+          </Text>
         </View>
         <View className="flex-row justify-between items-center">
-          <Text className="text-sm text-gray-600 flex-1" numberOfLines={1}>
+          <Text 
+            className="text-sm flex-1" 
+            style={{ color: colors.secondaryText }}
+            numberOfLines={1}
+          >
             {chat.lastMessage}
           </Text>
           {chat.messageCount === -1 ? (
             <View className="flex-row items-center ml-2">
-              <Text className="text-xs text-gray-500 mr-1">Your messages:</Text>
-              <ActivityIndicator size="small" color="#0088cc" />
+              <Text 
+                className="text-xs mr-1" 
+                style={{ color: colors.secondaryText }}
+              >
+                {t('yourMessages')}:
+              </Text>
+              <ActivityIndicator size="small" color={colors.primary} />
             </View>
           ) : chat.messageCount === -2 ? (
             <View className="flex-row items-center ml-2">
-              <Text className="text-xs text-gray-500 mr-1">Your messages:</Text>
-              <View className="bg-gray-400 rounded-full px-2 py-0.5">
+              <Text 
+                className="text-xs mr-1" 
+                style={{ color: colors.secondaryText }}
+              >
+                {t('yourMessages')}:
+              </Text>
+              <View 
+                className="rounded-full px-2 py-0.5"
+                style={{ backgroundColor: colors.secondaryText }}
+              >
                 <Text className="text-xs text-white font-semibold">
                   ?
                 </Text>
@@ -96,8 +132,16 @@ export default function ChatListItem({ chat, isSelected, onToggle }: ChatListIte
             </View>
           ) : chat.messageCount >= 0 ? (
             <View className="flex-row items-center ml-2">
-              <Text className="text-xs text-gray-500 mr-1">Your messages:</Text>
-              <View className={`${chat.messageCount === 0 ? 'bg-green-500' : 'bg-telegram-blue'} rounded-full px-2 py-0.5`}>
+              <Text 
+                className="text-xs mr-1" 
+                style={{ color: colors.secondaryText }}
+              >
+                {t('yourMessages')}:
+              </Text>
+              <View 
+                className="rounded-full px-2 py-0.5"
+                style={{ backgroundColor: chat.messageCount === 0 ? colors.success : colors.primary }}
+              >
                 <Text className="text-xs text-white font-semibold">
                   {chat.messageCount}
                 </Text>
