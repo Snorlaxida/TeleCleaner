@@ -44,6 +44,7 @@ export interface TelegramChat {
   lastMessage?: string;
   timestamp?: string;
   avatar?: string;
+  photoId?: string; // Telegram photo_id for caching (changes when user updates avatar)
   messageCount?: number; // Total number of user's messages in this chat
   avatarLoading?: boolean; // True if avatar is being loaded
 }
@@ -553,12 +554,24 @@ export class TelegramClient {
   /**
    * Get profile photo for a chat as base64 data URL
    */
-  async getChatProfilePhoto(chatId: string): Promise<string | null> {
+  async getChatProfilePhoto(chatId: string, currentPhotoId?: string | null): Promise<string | null> {
     if (!API_BASE_URL) {
       throw new Error('API base URL is not configured');
     }
     if (!this.authToken) {
       throw new Error('Not authenticated - no auth token');
+    }
+
+    // Import avatarCache dynamically to avoid circular dependencies
+    const { avatarCache } = await import('./avatarCache');
+
+    // Check cache first if we have a photoId
+    if (currentPhotoId) {
+      const cached = await avatarCache.get(chatId, currentPhotoId);
+      if (cached) {
+        console.log(`[Telegram] Using cached avatar for chat ${chatId}`);
+        return cached;
+      }
     }
 
     try {
@@ -575,7 +588,13 @@ export class TelegramClient {
         return null;
       }
 
-      const data = (await res.json()) as { chatId: string; photo: string | null };
+      const data = (await res.json()) as { chatId: string; photoId: string | null; photo: string | null };
+      
+      // Cache the photo if we have both photoId and photo data
+      if (data.photoId && data.photo) {
+        await avatarCache.set(chatId, data.photoId, data.photo);
+      }
+
       return data.photo;
     } catch (error) {
       console.error('Failed to get profile photo:', error);
@@ -676,6 +695,24 @@ export class TelegramClient {
       throw new Error('Not authenticated - no auth token');
     }
 
+    // Prepare date timestamps if provided
+    let startTimestamp: number | undefined;
+    let endTimestamp: number | undefined;
+    
+    if (options.startDate) {
+      // Set to start of day in user's local timezone
+      const start = new Date(options.startDate);
+      start.setHours(0, 0, 0, 0);
+      startTimestamp = Math.floor(start.getTime() / 1000); // Unix timestamp in seconds
+    }
+    
+    if (options.endDate) {
+      // Set to end of day in user's local timezone
+      const end = new Date(options.endDate);
+      end.setHours(23, 59, 59, 999);
+      endTimestamp = Math.floor(end.getTime() / 1000); // Unix timestamp in seconds
+    }
+
     const res = await fetchWithTimeout(`${API_BASE_URL}/telegram-delete-messages`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -683,8 +720,9 @@ export class TelegramClient {
         chatId,
         messageIds: options.messageIds,
         timeRange: options.timeRange,
-        startDate: options.startDate?.toISOString(),
-        endDate: options.endDate?.toISOString(),
+        // Send Unix timestamps (already in user's timezone context)
+        startDate: startTimestamp,
+        endDate: endTimestamp,
       }),
     }, 60000); // 60 second timeout for potentially large deletions
 

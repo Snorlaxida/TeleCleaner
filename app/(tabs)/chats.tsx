@@ -28,7 +28,6 @@ export default function ChatsScreen() {
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [avatarCache, setAvatarCache] = useState<Map<string, string>>(new Map());
 
   // Filter chats based on search query
   useEffect(() => {
@@ -62,7 +61,6 @@ export default function ChatsScreen() {
         // Step 2: Load message counts AND profile photos for each chat incrementally
         // Process in batches to avoid overwhelming the API
         const batchSize = 15; // Process 15 chats at a time for faster loading
-        const newAvatarCache = new Map<string, string>();
         
         for (let i = 0; i < result.length; i += batchSize) {
           const batch = result.slice(i, i + batchSize);
@@ -72,20 +70,20 @@ export default function ChatsScreen() {
             const isPrivateChat = chat.type === 'private';
             
             // Run count and photo fetch in parallel for each chat
+            // Pass photoId to enable client-side caching
             const [count, photo] = await Promise.all([
               telegramClient.getChatMessageCount(chat.id, isPrivateChat).catch(error => {
                 console.error(`Failed to count messages for chat ${chat.id}:`, error);
                 return 0;
               }),
-              telegramClient.getChatProfilePhoto(chat.id).catch(error => {
+              telegramClient.getChatProfilePhoto(chat.id, chat.photoId).catch(error => {
                 console.error(`Failed to get photo for chat ${chat.id}:`, error);
                 return null;
               })
             ]);
 
-            // Cache the avatar
+            // Use the photo from API (or cache automatically via avatarCache.ts)
             const finalAvatar = photo || chat.avatar || '💬';
-            newAvatarCache.set(chat.id, finalAvatar);
 
             return { 
               chatId: chat.id, 
@@ -113,9 +111,6 @@ export default function ChatsScreen() {
             return updatedChats;
           });
         }
-        
-        // Save the avatar cache
-        setAvatarCache(newAvatarCache);
       } catch (error) {
         console.error(error);
         
@@ -175,16 +170,15 @@ export default function ChatsScreen() {
     setIsRefreshing(true);
     try {
       // Step 1: Load chats quickly (without message counts)
+      // Avatars will use cached data automatically via avatarCache.ts
       const result = await telegramClient.getChatsQuick();
       
-      // Use cached avatars instead of reloading them
-      const chatsWithCachedAvatars = result.map(chat => ({
+      const chatsWithState = result.map(chat => ({
         ...chat,
-        avatar: avatarCache.get(chat.id) || chat.avatar,
         avatarLoading: false,
       }));
       
-      setChats(chatsWithCachedAvatars);
+      setChats(chatsWithState);
 
       // Step 2: ONLY reload message counts (NOT avatars)
       const batchSize = 15;

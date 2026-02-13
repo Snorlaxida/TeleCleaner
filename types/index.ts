@@ -4,6 +4,7 @@ export interface Chat {
   lastMessage: string;
   timestamp: string;
   avatar: string;
+  photoId?: string; // Telegram photo_id for caching
   messageCount: number;
   type?: 'private' | 'group' | 'channel';
 }

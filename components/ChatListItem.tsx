@@ -8,6 +8,7 @@ interface Chat {
   lastMessage: string;
   timestamp: string;
   avatar?: string; // Emoji, initial letter, or base64 data URL
+  photoId?: string; // Telegram photo_id for caching
   messageCount: number; // Total user's messages in this chat (-1 means loading, -2 means private chat shows "?")
   avatarLoading?: boolean; // True if avatar is being loaded
 }

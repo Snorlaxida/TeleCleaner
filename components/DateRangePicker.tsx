@@ -115,6 +115,8 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
     t('thu'), t('fri'), t('sat')
   ];
 
+  const isSingleDate = startDate.toDateString() === endDate.toDateString();
+
   return (
     <Modal
       visible={visible}
@@ -148,7 +150,12 @@ export default function DateRangePicker({ visible, onClose, onConfirm }: DateRan
               className="text-sm text-center mt-1"
               style={{ color: colors.secondaryText }}
             >
-              {selectingStart ? t('selectStartDate') : t('selectEndDate')}
+              {selectingStart 
+                ? t('selectStartDate') 
+                : isSingleDate 
+                  ? t('selectEndDateOrConfirm')
+                  : t('selectEndDate')
+              }
             </Text>
           </View>
 
