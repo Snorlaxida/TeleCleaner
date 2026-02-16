@@ -46,16 +46,26 @@ export default function ChatsScreen() {
     const loadChats = async () => {
       setIsLoadingChats(true);
       try {
-        // Step 1: Load chats quickly (without message counts and avatars)
+        // Step 1: Load chats quickly WITH cached avatars (instant!)
         const result = await telegramClient.getChatsQuick();
         
-        // Mark all chats as having avatars loading
-        const chatsWithLoadingState = result.map(chat => ({
-          ...chat,
-          avatarLoading: true,
-        }));
+        // Import avatarCache
+        const { avatarCache } = await import('@/lib/avatarCache');
         
-        setChats(chatsWithLoadingState);
+        // Load cached avatars immediately (NO HTTP requests!)
+        const chatsWithCachedAvatars = await Promise.all(
+          result.map(async (chat) => {
+            // Get from cache without forcing check (uses cache if < 24h)
+            const cachedPhoto = await avatarCache.get(chat.id, chat.photoId, false).catch(() => null);
+            return {
+              ...chat,
+              avatar: cachedPhoto || chat.avatar || '💬',
+              avatarLoading: cachedPhoto ? false : true, // Only loading if no cache
+            };
+          })
+        );
+        
+        setChats(chatsWithCachedAvatars);
         setIsLoadingChats(false);
 
         // Step 2: Load message counts AND profile photos for each chat incrementally
@@ -65,36 +75,50 @@ export default function ChatsScreen() {
         for (let i = 0; i < result.length; i += batchSize) {
           const batch = result.slice(i, i + batchSize);
           
-          // Load both counts and avatars for this batch in parallel
           const dataPromises = batch.map(async (chat) => {
             const isPrivateChat = chat.type === 'private';
             
-            // Run count and photo fetch in parallel for each chat
-            // Pass photoId to enable client-side caching
-            const [count, photo] = await Promise.all([
-              telegramClient.getChatMessageCount(chat.id, isPrivateChat).catch(error => {
-                console.error(`Failed to count messages for chat ${chat.id}:`, error);
-                return 0;
-              }),
-              telegramClient.getChatProfilePhoto(chat.id, chat.photoId).catch(error => {
-                console.error(`Failed to get photo for chat ${chat.id}:`, error);
-                return null;
-              })
-            ]);
-
-            // Use the photo from API (or cache automatically via avatarCache.ts)
-            const finalAvatar = photo || chat.avatar || '💬';
+            // Find current chat state to check if avatar is already loaded
+            const currentChat = chatsWithCachedAvatars.find(c => c.id === chat.id);
+            const needsAvatar = currentChat?.avatarLoading === true;
+            
+            // Build promises array
+            const promises: [Promise<number>, Promise<string | null>?] = [
+              // For private chats, return -2 immediately without API call
+              // For groups/channels, fetch message count
+              isPrivateChat 
+                ? Promise.resolve(-2) 
+                : telegramClient.getChatMessageCount(chat.id, false).catch(error => {
+                    console.error(`Failed to count messages for chat ${chat.id}:`, error);
+                    return 0;
+                  })
+            ];
+            
+            // Only fetch avatar if not cached (avatarLoading === true)
+            if (needsAvatar) {
+              console.log(`[Chats] Fetching missing avatar for chat ${chat.id}`);
+              promises.push(
+                telegramClient.getChatProfilePhoto(chat.id, chat.photoId).catch(error => {
+                  console.error(`Failed to get photo for chat ${chat.id}:`, error);
+                  return null;
+                })
+              );
+            }
+            
+            const results = await Promise.all(promises);
+            const count = results[0];
+            const photo = results[1]; // Will be undefined if avatar was cached
 
             return { 
               chatId: chat.id, 
               count,
-              photo: finalAvatar,
+              photo: photo || undefined, // Keep undefined if not fetched
             };
           });
 
           const data = await Promise.all(dataPromises);
 
-          // Update chats with the new counts and avatars
+          // Update chats with the new counts and avatars (only update avatar if fetched)
           setChats(prevChats => {
             const updatedChats = [...prevChats];
             data.forEach(({ chatId, count, photo }) => {
@@ -103,7 +127,7 @@ export default function ChatsScreen() {
                 updatedChats[index] = {
                   ...updatedChats[index],
                   messageCount: count,
-                  avatar: photo,
+                  ...(photo && { avatar: photo }), // Only update avatar if new photo fetched
                   avatarLoading: false,
                 };
               }
@@ -169,16 +193,26 @@ export default function ChatsScreen() {
     
     setIsRefreshing(true);
     try {
-      // Step 1: Load chats quickly (without message counts)
-      // Avatars will use cached data automatically via avatarCache.ts
+      // Step 1: Load chats quickly with cached avatars (NO HTTP requests for avatars!)
       const result = await telegramClient.getChatsQuick();
       
-      const chatsWithState = result.map(chat => ({
-        ...chat,
-        avatarLoading: false,
-      }));
+      // Import avatarCache dynamically
+      const { avatarCache } = await import('@/lib/avatarCache');
       
-      setChats(chatsWithState);
+      // Try to load avatars from cache first (instant, no HTTP!)
+      const chatsWithCachedAvatars = await Promise.all(
+        result.map(async (chat) => {
+          // Try to get from cache WITHOUT forcing photoId check (uses cached data if < 24h)
+          const cachedPhoto = await avatarCache.get(chat.id, chat.photoId, false).catch(() => null);
+          return {
+            ...chat,
+            avatar: cachedPhoto || chat.avatar || '💬',
+            avatarLoading: false,
+          };
+        })
+      );
+      
+      setChats(chatsWithCachedAvatars);
 
       // Step 2: ONLY reload message counts (NOT avatars)
       const batchSize = 15;
@@ -188,11 +222,14 @@ export default function ChatsScreen() {
         const dataPromises = batch.map(async (chat) => {
           const isPrivateChat = chat.type === 'private';
           
-          // Only fetch message count, NOT avatar
-          const count = await telegramClient.getChatMessageCount(chat.id, isPrivateChat).catch(error => {
-            console.error(`Failed to count messages for chat ${chat.id}:`, error);
-            return 0;
-          });
+          // For private chats, return -2 immediately without API call
+          // For groups/channels, fetch message count
+          const count = isPrivateChat 
+            ? -2 
+            : await telegramClient.getChatMessageCount(chat.id, false).catch(error => {
+                console.error(`Failed to count messages for chat ${chat.id}:`, error);
+                return 0;
+              });
 
           return { 
             chatId: chat.id, 
@@ -202,7 +239,7 @@ export default function ChatsScreen() {
 
         const data = await Promise.all(dataPromises);
 
-        // Update only message counts, keep cached avatars
+        // Update only message counts (keep cached avatars)
         setChats(prevChats => {
           const updatedChats = [...prevChats];
           data.forEach(({ chatId, count }) => {
@@ -211,7 +248,6 @@ export default function ChatsScreen() {
               updatedChats[index] = {
                 ...updatedChats[index],
                 messageCount: count,
-                // Keep the cached avatar
               };
             }
           });
@@ -242,7 +278,7 @@ export default function ChatsScreen() {
       return;
     }
 
-    // Navigate to confirm deletion screen with only chat IDs and names (without heavy base64 avatars)
+    // Navigate to confirm deletion screen with chat IDs, names, and photoIds (for cache lookup)
     // This dramatically improves performance for large selections
     const selectedChatsData = chats
       .filter(chat => selectedChats.has(chat.id))
@@ -250,6 +286,7 @@ export default function ChatsScreen() {
         id: chat.id,
         name: chat.name,
         type: chat.type,
+        photoId: chat.photoId, // Include photoId for cached avatar loading
         // Use emoji/initial avatars only (no base64 images)
         avatar: chat.avatar && !chat.avatar.startsWith('data:image') ? chat.avatar : null,
       }));

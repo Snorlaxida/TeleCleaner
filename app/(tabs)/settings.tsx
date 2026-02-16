@@ -8,6 +8,7 @@ import SelectionModal from '@/components/SelectionModal';
 import { useTheme, ThemeMode } from '@/lib/theme';
 import { useTranslation } from 'react-i18next';
 import { saveLanguage } from '@/lib/i18n';
+import SubscriptionModal from '@/components/SubscriptionModal';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -20,12 +21,20 @@ export default function SettingsScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<{
+    hasActiveSubscription: boolean;
+    subscription: {
+      endDate: Date;
+    } | null;
+  } | null>(null);
 
   // Get app version from package.json via expo-constants
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   useEffect(() => {
     loadUserInfo();
+    loadSubscriptionStatus();
   }, []);
 
   const loadUserInfo = async () => {
@@ -42,6 +51,36 @@ export default function SettingsScreen() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadSubscriptionStatus = async () => {
+    try {
+      const status = await telegramClient.checkSubscription();
+      setSubscriptionStatus(status);
+    } catch (error) {
+      console.error('Failed to load subscription status:', error);
+    }
+  };
+
+  const handleSubscriptionPress = () => {
+    if (!subscriptionStatus?.hasActiveSubscription) {
+      setShowSubscriptionModal(true);
+    }
+  };
+
+  const handleSubscriptionSuccess = () => {
+    setShowSubscriptionModal(false);
+    loadSubscriptionStatus(); // Reload subscription status
+  };
+
+  const getSubscriptionText = () => {
+    if (!subscriptionStatus) return t('loading');
+    if (subscriptionStatus.hasActiveSubscription && subscriptionStatus.subscription) {
+      return t('subscriptionUntil', { 
+        date: subscriptionStatus.subscription.endDate.toLocaleDateString() 
+      });
+    }
+    return t('noSubscription');
   };
 
   const handleLogout = () => {
@@ -156,6 +195,11 @@ export default function SettingsScreen() {
           subtitle={userInfo?.username ? `@${userInfo.username}` : t('noUsername')}
           onPress={() => {}}
         />
+        <SettingItem
+          title={t('subscriptionStatus')}
+          subtitle={getSubscriptionText()}
+          onPress={handleSubscriptionPress}
+        />
       </View>
 
       {/* Appearance Section */}
@@ -260,6 +304,13 @@ export default function SettingsScreen() {
         onConfirm={() => setShowErrorDialog(false)}
         confirmText={t('ok')}
         cancelText=""
+      />
+
+      {/* Subscription Modal */}
+      <SubscriptionModal
+        visible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        onSuccess={handleSubscriptionSuccess}
       />
     </ScrollView>
   );

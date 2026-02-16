@@ -8,13 +8,15 @@ import { DeletionOption, CustomDateRange } from '@/app/(tabs)/chats';
 import DateRangePicker from '@/components/DateRangePicker';
 import { useTheme } from '@/lib/theme';
 import { useTranslation } from 'react-i18next';
+import SubscriptionModal from '@/components/SubscriptionModal';
 
-// Lightweight chat data structure (without heavy base64 avatars)
+// Lightweight chat data structure (with cached avatars support)
 interface LightweightChat {
   id: string;
   name: string;
   type: string;
   avatar: string | null;
+  photoId?: string; // Telegram photo_id for loading from cache
 }
 
 export default function ConfirmDeletionScreen() {
@@ -24,12 +26,13 @@ export default function ConfirmDeletionScreen() {
   const { colors, colorScheme } = useTheme();
   const { t } = useTranslation();
   
-  // Parse selected chats from params (now lightweight - no base64 avatars)
+  // Parse selected chats from params (now with cached avatars support)
   const selectedChatsData: LightweightChat[] = typeof params.chatsData === 'string' 
     ? JSON.parse(params.chatsData) 
     : [];
   
   const [chats, setChats] = useState<LightweightChat[]>(selectedChatsData);
+  const [loadingAvatars, setLoadingAvatars] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedTimeRange, setSelectedTimeRange] = useState<DeletionOption>('last_day');
   const [customRange, setCustomRange] = useState<CustomDateRange | null>(null);
@@ -40,16 +43,96 @@ export default function ConfirmDeletionScreen() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
 
-
+  // Load cached avatars and subscription status on mount
+  useEffect(() => {
+    const loadCachedAvatars = async () => {
+      try {
+        // Import avatarCache
+        const { avatarCache } = await import('@/lib/avatarCache');
+        
+        // Load avatars from cache for each chat
+        const updatedChats = await Promise.all(
+          chats.map(async (chat) => {
+            // Skip if no photoId
+            if (!chat.photoId) {
+              return chat;
+            }
+            
+            // Get from cache (no HTTP request!)
+            const cachedPhoto = await avatarCache.get(chat.id, chat.photoId, false).catch(() => null);
+            
+            if (cachedPhoto) {
+              console.log(`[ConfirmDeletion] Loaded cached avatar for chat ${chat.id}`);
+              return {
+                ...chat,
+                avatar: cachedPhoto,
+              };
+            }
+            
+            return chat;
+          })
+        );
+        
+        setChats(updatedChats);
+        setLoadingAvatars(false);
+      } catch (error) {
+        console.error('[ConfirmDeletion] Failed to load cached avatars:', error);
+        setLoadingAvatars(false);
+      }
+    };
+    
+    const loadSubscriptionStatus = async () => {
+      try {
+        const status = await telegramClient.checkSubscription();
+        setHasActiveSubscription(status.hasActiveSubscription);
+      } catch (error) {
+        console.error('[ConfirmDeletion] Failed to load subscription status:', error);
+        setHasActiveSubscription(false);
+      } finally {
+        setIsLoadingSubscription(false);
+      }
+    };
+    
+    loadCachedAvatars();
+    loadSubscriptionStatus();
+  }, []); // Run once on mount
 
   const handleTimeRangeSelect = (option: DeletionOption) => {
+    // Check if option requires subscription
+    const requiresSubscription = option === 'custom' || option === 'all';
+    
+    if (requiresSubscription && !hasActiveSubscription) {
+      setShowSubscriptionModal(true);
+      return;
+    }
+
     if (option === 'custom') {
       setShowDatePicker(true);
     } else {
       setSelectedTimeRange(option);
       setCustomRange(null);
     }
+  };
+
+  const handleSubscriptionSuccess = async () => {
+    setShowSubscriptionModal(false);
+    // Reload subscription status
+    try {
+      const status = await telegramClient.checkSubscription();
+      setHasActiveSubscription(status.hasActiveSubscription);
+    } catch (error) {
+      console.error('Failed to reload subscription status:', error);
+    }
+  };
+
+  const isOptionLocked = (option: DeletionOption): boolean => {
+    if (isLoadingSubscription) return false;
+    if (hasActiveSubscription) return false;
+    return option === 'custom' || option === 'all';
   };
 
   const handleCustomDateConfirm = (range: CustomDateRange) => {
@@ -161,7 +244,8 @@ export default function ConfirmDeletionScreen() {
   // Render individual chat item (optimized for FlatList)
   const renderChatItem = ({ item, index }: { item: LightweightChat; index: number }) => {
     const avatar = getDefaultAvatar(item);
-    const isEmoji = /[\u{1F300}-\u{1F9FF}]/u.test(avatar);
+    const isBase64Image = avatar && avatar.startsWith('data:image');
+    const isEmoji = !isBase64Image && /[\u{1F300}-\u{1F9FF}]/u.test(avatar);
     
     const isFirst = index === 0;
     const isLast = index === chats.length - 1;
@@ -179,12 +263,20 @@ export default function ConfirmDeletionScreen() {
         <View className="flex-row items-center py-3 px-3">
           {/* Avatar */}
           <View 
-            className="w-10 h-10 rounded-full items-center justify-center mr-3"
-            style={{ backgroundColor: colors.primary }}
+            className="w-10 h-10 rounded-full items-center justify-center mr-3 overflow-hidden"
+            style={{ backgroundColor: isBase64Image ? 'transparent' : colors.primary }}
           >
-            <Text className={isEmoji ? "text-lg" : "text-base font-bold text-white"}>
-              {avatar}
-            </Text>
+            {isBase64Image ? (
+              <Image 
+                source={{ uri: avatar }} 
+                className="w-full h-full"
+                resizeMode="cover"
+              />
+            ) : (
+              <Text className={isEmoji ? "text-lg" : "text-base font-bold text-white"}>
+                {avatar}
+              </Text>
+            )}
           </View>
           <View className="flex-1">
             <Text 
@@ -232,41 +324,46 @@ export default function ConfirmDeletionScreen() {
             { value: 'last_week' as DeletionOption, label: t('last7Days') },
             { value: 'custom' as DeletionOption, label: t('customDateRange') },
             { value: 'all' as DeletionOption, label: t('allMessages') },
-          ].map((option) => (
-            <TouchableOpacity
-              key={option.value}
-              className="p-4 rounded-lg border-2"
-              style={{
-                borderColor: selectedTimeRange === option.value ? colors.primary : colors.border,
-                backgroundColor: selectedTimeRange === option.value 
-                  ? colors.secondaryBackground 
-                  : colors.cardBackground
-              }}
-              onPress={() => handleTimeRangeSelect(option.value)}
-            >
-              <View className="flex-row items-center justify-between">
-                <Text 
-                  className="text-base font-medium"
-                  style={{ 
-                    color: selectedTimeRange === option.value ? colors.primary : colors.text 
-                  }}
-                >
-                  {option.label}
-                </Text>
-                {selectedTimeRange === option.value && (
-                  <Text className="text-lg" style={{ color: colors.primary }}>✓</Text>
+          ].map((option) => {
+            const locked = isOptionLocked(option.value);
+            return (
+              <TouchableOpacity
+                key={option.value}
+                className="p-4 rounded-lg border-2"
+                style={{
+                  borderColor: selectedTimeRange === option.value ? colors.primary : colors.border,
+                  backgroundColor: selectedTimeRange === option.value 
+                    ? colors.secondaryBackground 
+                    : colors.cardBackground,
+                  opacity: locked ? 0.6 : 1,
+                }}
+                onPress={() => handleTimeRangeSelect(option.value)}
+              >
+                <View className="flex-row items-center justify-between">
+                  <Text 
+                    className="text-base font-medium"
+                    style={{ 
+                      color: selectedTimeRange === option.value ? colors.primary : colors.text 
+                    }}
+                  >
+                    {option.label}
+                    {locked && ' 🔒'}
+                  </Text>
+                  {selectedTimeRange === option.value && !locked && (
+                    <Text className="text-lg" style={{ color: colors.primary }}>✓</Text>
+                  )}
+                </View>
+                {selectedTimeRange === option.value && option.value === 'custom' && customRange && (
+                  <Text 
+                    className="text-sm mt-2"
+                    style={{ color: colors.secondaryText }}
+                  >
+                    {customRange.startDate.toLocaleDateString()} - {customRange.endDate.toLocaleDateString()}
+                  </Text>
                 )}
-              </View>
-              {selectedTimeRange === option.value && option.value === 'custom' && customRange && (
-                <Text 
-                  className="text-sm mt-2"
-                  style={{ color: colors.secondaryText }}
-                >
-                  {customRange.startDate.toLocaleDateString()} - {customRange.endDate.toLocaleDateString()}
-                </Text>
-              )}
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
@@ -388,6 +485,13 @@ export default function ConfirmDeletionScreen() {
         onConfirm={() => setShowErrorDialog(false)}
         confirmText={t('ok')}
         cancelText=""
+      />
+
+      {/* Subscription Modal */}
+      <SubscriptionModal
+        visible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        onSuccess={handleSubscriptionSuccess}
       />
     </View>
   );

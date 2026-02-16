@@ -450,8 +450,11 @@ export class TelegramClient {
         lastMessage: { id: number; text: string | null; date: string | null } | null;
         unreadCount: number;
         avatar?: string;
+        photoId?: string; // Telegram photo_id for caching
       }[];
     };
+
+    console.log('[TelegramClient] getChatsQuick response:', data.chats.slice(0, 2)); // Log first 2 chats for debugging
 
     return data.chats.map((chat) => ({
       id: chat.id,
@@ -465,6 +468,7 @@ export class TelegramClient {
       lastMessage: chat.lastMessage?.text || undefined,
       timestamp: chat.lastMessage?.date || undefined,
       avatar: chat.avatar,
+      photoId: chat.photoId, // Include photoId for caching
       messageCount: chat.unreadCount, // Will be -1 indicating not yet counted
     }));
   }
@@ -502,6 +506,7 @@ export class TelegramClient {
         lastMessage: { id: number; text: string | null; date: string | null } | null;
         unreadCount: number;
         avatar?: string;
+        photoId?: string; // Telegram photo_id for caching
       }[];
     };
 
@@ -517,6 +522,7 @@ export class TelegramClient {
       lastMessage: chat.lastMessage?.text || undefined,
       timestamp: chat.lastMessage?.date || undefined,
       avatar: chat.avatar,
+      photoId: chat.photoId, // Include photoId for caching
       messageCount: chat.unreadCount,
     }));
   }
@@ -565,13 +571,18 @@ export class TelegramClient {
     // Import avatarCache dynamically to avoid circular dependencies
     const { avatarCache } = await import('./avatarCache');
 
-    // Check cache first if we have a photoId
-    if (currentPhotoId) {
-      const cached = await avatarCache.get(chatId, currentPhotoId);
-      if (cached) {
-        console.log(`[Telegram] Using cached avatar for chat ${chatId}`);
-        return cached;
-      }
+    // ALWAYS check cache first (even without photoId)
+    // This will use cached data without HTTP request if last check was < 24h
+    const cached = await avatarCache.get(chatId, currentPhotoId, false);
+    if (cached) {
+      console.log(`[Telegram] Using cached avatar for chat ${chatId}`);
+      return cached;
+    }
+    
+    // If no photoId provided, cannot fetch
+    if (!currentPhotoId) {
+      console.log(`[Telegram] No photoId provided for chat ${chatId}, skipping fetch`);
+      return null;
     }
 
     try {
@@ -774,6 +785,151 @@ export class TelegramClient {
       case 'all':
       default:
         return messages;
+    }
+  }
+
+  /**
+   * Check if user has an active subscription
+   */
+  async checkSubscription(): Promise<{
+    hasActiveSubscription: boolean;
+    subscription: {
+      id: string;
+      status: string;
+      startDate: Date;
+      endDate: Date;
+      amount: number;
+    } | null;
+  }> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL not configured');
+    }
+
+    if (!this.currentUserId) {
+      throw new Error('User not logged in');
+    }
+
+    if (!this.authToken) {
+      await this.loadToken();
+      if (!this.authToken) {
+        throw new Error('Not authenticated');
+      }
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/subscription-check`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ userId: this.currentUserId }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error('checkSubscription error:', body);
+        throw new Error('Failed to check subscription');
+      }
+
+      const data = await res.json();
+      
+      // Convert date strings to Date objects
+      if (data.subscription) {
+        data.subscription.startDate = new Date(data.subscription.startDate);
+        data.subscription.endDate = new Date(data.subscription.endDate);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Failed to check subscription:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create subscription invoice for Telegram Stars payment
+   */
+  async createSubscriptionInvoice(): Promise<{
+    invoiceId: string;
+    amount: number;
+    currency: string;
+  }> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL not configured');
+    }
+
+    if (!this.currentUserId) {
+      throw new Error('User not logged in');
+    }
+
+    if (!this.authToken) {
+      await this.loadToken();
+      if (!this.authToken) {
+        throw new Error('Not authenticated');
+      }
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/subscription-create-invoice`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ userId: this.currentUserId }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error('createSubscriptionInvoice error:', body);
+        throw new Error('Failed to create invoice');
+      }
+
+      return await res.json();
+    } catch (error) {
+      console.error('Failed to create subscription invoice:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process successful payment
+   */
+  async processSuccessfulPayment(
+    invoiceId: string,
+    chargeId: string,
+    amount: number
+  ): Promise<void> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL not configured');
+    }
+
+    if (!this.currentUserId) {
+      throw new Error('User not logged in');
+    }
+
+    if (!this.authToken) {
+      await this.loadToken();
+      if (!this.authToken) {
+        throw new Error('Not authenticated');
+      }
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/subscription-process-payment`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          userId: this.currentUserId,
+          invoiceId,
+          chargeId,
+          amount,
+        }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error('processSuccessfulPayment error:', body);
+        throw new Error('Failed to process payment');
+      }
+    } catch (error) {
+      console.error('Failed to process payment:', error);
+      throw error;
     }
   }
 

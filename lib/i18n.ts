@@ -152,6 +152,26 @@ const resources = {
       languageEnglish: 'English',
       languageRussian: 'Русский',
       
+      // Subscription
+      subscription: 'Subscription',
+      subscriptionStatus: 'Subscription Status',
+      subscriptionActive: 'Active',
+      subscriptionExpired: 'Expired',
+      noSubscription: 'No subscription',
+      subscriptionUntil: 'Active until {{date}}',
+      purchaseSubscription: 'Purchase Subscription',
+      monthlySubscription: 'Monthly Subscription',
+      subscriptionPrice: '{{amount}} Telegram Stars per month',
+      subscriptionBenefits: 'With subscription you get access to:',
+      benefitCustomDates: '• Delete messages by custom date range',
+      benefitAllMessages: '• Delete all messages',
+      benefitUnlimited: '• Unlimited access to all features',
+      subscribeToContinue: 'Subscribe to continue',
+      featureRequiresSubscription: 'This feature requires an active subscription',
+      purchaseNow: 'Purchase Now',
+      subscriptionError: 'Failed to process subscription',
+      subscriptionSuccess: 'Subscription activated successfully!',
+      
       // Errors
       error: 'Error',
       failedToLoadUserInfo: 'Failed to load user info',
@@ -307,6 +327,26 @@ const resources = {
       // Language options
       languageEnglish: 'English',
       languageRussian: 'Русский',
+      
+      // Subscription
+      subscription: 'Подписка',
+      subscriptionStatus: 'Статус подписки',
+      subscriptionActive: 'Активна',
+      subscriptionExpired: 'Истекла',
+      noSubscription: 'Нет подписки',
+      subscriptionUntil: 'Активна до {{date}}',
+      purchaseSubscription: 'Приобрести подписку',
+      monthlySubscription: 'Месячная подписка',
+      subscriptionPrice: '{{amount}} звёздочек Telegram в месяц',
+      subscriptionBenefits: 'С подпиской вы получаете доступ к:',
+      benefitCustomDates: '• Удаление сообщений по выбранным датам',
+      benefitAllMessages: '• Удаление всех сообщений',
+      benefitUnlimited: '• Неограниченный доступ ко всем функциям',
+      subscribeToContinue: 'Подпишитесь, чтобы продолжить',
+      featureRequiresSubscription: 'Для этой функции требуется активная подписка',
+      purchaseNow: 'Купить сейчас',
+      subscriptionError: 'Не удалось обработать подписку',
+      subscriptionSuccess: 'Подписка успешно активирована!',
       
       // Errors
       error: 'Ошибка',

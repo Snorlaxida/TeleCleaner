@@ -8,6 +8,7 @@ interface AvatarCacheEntry {
   photoId: string; // Telegram's photo_id - changes when user updates avatar
   photoData: string; // base64 encoded photo data
   timestamp: number; // When cached
+  lastPhotoIdCheck: number; // Last time we checked photoId with server
 }
 
 /**
@@ -19,10 +20,11 @@ class AvatarCache {
   private static readonly METADATA_KEY = '@avatar_cache_metadata';
   private static readonly MAX_CACHE_SIZE = 200; // Max number of cached avatars
   private static readonly MAX_CACHE_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
+  private static readonly PHOTO_ID_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // Check photoId once per day
 
   // In-memory cache for fast access (LRU)
   private memoryCache: Map<string, AvatarCacheEntry> = new Map();
-  private metadata: { [chatId: string]: { photoId: string; timestamp: number } } = {};
+  private metadata: { [chatId: string]: { photoId: string; timestamp: number; lastPhotoIdCheck?: number } } = {};
   private initialized = false;
 
   /**
@@ -48,20 +50,36 @@ class AvatarCache {
   /**
    * Get cached avatar if exists and photoId matches
    * @param chatId - Chat identifier
-   * @param currentPhotoId - Current photo_id from Telegram
+   * @param currentPhotoId - Current photo_id from Telegram (optional, used only if check is needed)
+   * @param forceCheck - Force photoId check (default: false, checks only once per day)
    * @returns Cached photo data or null if not found/outdated/photo changed
    */
-  async get(chatId: string, currentPhotoId: string | null | undefined): Promise<string | null> {
-    if (!currentPhotoId) return null;
+  async get(chatId: string, currentPhotoId: string | null | undefined, forceCheck: boolean = false): Promise<string | null> {
+    if (!currentPhotoId) {
+      console.log(`[AvatarCache] No photoId provided for chat ${chatId}`);
+      return null;
+    }
 
     await this.initialize();
 
     // Check in-memory cache first (fastest)
     const memEntry = this.memoryCache.get(chatId);
-    if (memEntry && memEntry.photoId === currentPhotoId) {
+    if (memEntry) {
       const age = Date.now() - memEntry.timestamp;
-      if (age <= AvatarCache.MAX_CACHE_AGE) {
-        console.log(`[AvatarCache] Memory hit for chat ${chatId}`);
+      const timeSinceLastCheck = Date.now() - memEntry.lastPhotoIdCheck;
+      
+      // If cache is fresh and we don't need to check photoId yet
+      if (age <= AvatarCache.MAX_CACHE_AGE && 
+          (!forceCheck && timeSinceLastCheck < AvatarCache.PHOTO_ID_CHECK_INTERVAL)) {
+        console.log(`[AvatarCache] Memory hit for chat ${chatId} (no photoId check needed)`);
+        return memEntry.photoData;
+      }
+      
+      // If we need to check photoId
+      if (currentPhotoId && memEntry.photoId === currentPhotoId) {
+        console.log(`[AvatarCache] Memory hit for chat ${chatId} (photoId verified)`);
+        // Update lastPhotoIdCheck
+        memEntry.lastPhotoIdCheck = Date.now();
         return memEntry.photoData;
       }
     }
@@ -73,19 +91,29 @@ class AvatarCache {
       return null;
     }
 
-    // Check if photoId changed (user updated avatar)
-    if (meta.photoId !== currentPhotoId) {
-      console.log(`[AvatarCache] Photo changed for chat ${chatId}: ${meta.photoId} -> ${currentPhotoId}`);
-      await this.delete(chatId);
-      return null;
-    }
-
     // Check if cache entry is too old
     const age = Date.now() - meta.timestamp;
     if (age > AvatarCache.MAX_CACHE_AGE) {
       console.log(`[AvatarCache] Expired for chat ${chatId} (age: ${Math.floor(age / 1000 / 60 / 60 / 24)} days)`);
       await this.delete(chatId);
       return null;
+    }
+
+    // Check if we need to verify photoId
+    const timeSinceLastCheck = Date.now() - (meta.lastPhotoIdCheck || 0);
+    const needsPhotoIdCheck = forceCheck || timeSinceLastCheck >= AvatarCache.PHOTO_ID_CHECK_INTERVAL;
+
+    if (needsPhotoIdCheck && currentPhotoId) {
+      // Check if photoId changed (user updated avatar)
+      if (meta.photoId !== currentPhotoId) {
+        console.log(`[AvatarCache] Photo changed for chat ${chatId}: ${meta.photoId} -> ${currentPhotoId}`);
+        await this.delete(chatId);
+        return null;
+      }
+      
+      // Update lastPhotoIdCheck in metadata
+      meta.lastPhotoIdCheck = Date.now();
+      await this.saveMetadata();
     }
 
     // Load from AsyncStorage
@@ -136,6 +164,7 @@ class AvatarCache {
         photoId,
         photoData,
         timestamp: Date.now(),
+        lastPhotoIdCheck: Date.now(),
       };
 
       // Save to AsyncStorage
@@ -146,6 +175,7 @@ class AvatarCache {
       this.metadata[chatId] = {
         photoId,
         timestamp: entry.timestamp,
+        lastPhotoIdCheck: entry.lastPhotoIdCheck,
       };
 
       // Add to memory cache
