@@ -1,10 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
 import { useTheme } from '@/lib/theme';
 import { useTranslation } from 'react-i18next';
 import { telegramClient } from '@/lib/telegram';
-// @ts-ignore - Telegram WebApp SDK
-const WebApp = typeof window !== 'undefined' && (window as any).Telegram?.WebApp;
+
+// Get Telegram WebApp instance
+const getTelegramWebApp = () => {
+  if (typeof window === 'undefined') return null;
+  // Try multiple sources
+  return (window as any).__TELEGRAM_WEB_APP__ || 
+         (window as any).Telegram?.WebApp ||
+         null;
+};
 
 interface SubscriptionModalProps {
   visible: boolean;
@@ -17,6 +24,25 @@ export default function SubscriptionModal({ visible, onClose, onSuccess }: Subsc
   const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isTelegramMiniApp, setIsTelegramMiniApp] = useState(false);
+
+  // Check if running in Telegram Mini App
+  useEffect(() => {
+    const WebApp = getTelegramWebApp();
+    const isInTelegram = WebApp && 
+                        WebApp.initData && 
+                        WebApp.initData.length > 0 &&
+                        typeof WebApp.openInvoice === 'function';
+    
+    setIsTelegramMiniApp(!!isInTelegram);
+    console.log('[SubscriptionModal] Environment check:', {
+      hasTelegramObject: !!WebApp,
+      hasInitData: !!(WebApp?.initData),
+      initDataLength: WebApp?.initData?.length || 0,
+      hasOpenInvoice: typeof WebApp?.openInvoice === 'function',
+      isTelegramMiniApp: !!isInTelegram,
+    });
+  }, []);
 
   const handlePurchase = async () => {
     try {
@@ -27,26 +53,25 @@ export default function SubscriptionModal({ visible, onClose, onSuccess }: Subsc
       const invoice = await telegramClient.createSubscriptionInvoice();
       console.log('[SubscriptionModal] Invoice created:', invoice);
 
-      // Check if Telegram WebApp is available
-      if (!WebApp || !WebApp.openInvoice) {
-        console.warn('[SubscriptionModal] Telegram WebApp not available, simulating payment for testing');
+      const WebApp = getTelegramWebApp();
+
+      // TEST MODE: For development/testing outside Telegram
+      if (!isTelegramMiniApp) {
+        console.warn('[SubscriptionModal] Not in Telegram Mini App, using test mode');
         
-        // FOR TESTING ONLY: Simulate successful payment
-        // REMOVE THIS IN PRODUCTION!
         const simulatePayment = confirm(
-          `Test Mode: Simulate payment of ${invoice.amount} stars?\n\nInvoice: ${invoice.invoiceId}\n\nIn production, this will open Telegram payment dialog.`
+          `🧪 TEST MODE\n\nSimulate payment of ${invoice.amount} Telegram Stars?\n\n⚠️ This is for testing only.`
         );
         
         if (simulatePayment) {
           try {
-            // Process payment on backend with test charge ID
             await telegramClient.processSuccessfulPayment(
               invoice.invoiceId,
               'test_charge_' + Date.now(),
               invoice.amount
             );
             
-            alert('Test payment successful! Subscription activated.');
+            alert('✅ Test payment successful! Subscription activated.');
             setIsLoading(false);
             onSuccess();
           } catch (error) {
@@ -60,19 +85,25 @@ export default function SubscriptionModal({ visible, onClose, onSuccess }: Subsc
         return;
       }
 
-      // Production: Open Telegram Stars invoice
+      // PRODUCTION MODE: Open real Telegram Stars invoice
+      console.log('[SubscriptionModal] Opening Telegram Stars invoice...');
+      
+      if (!WebApp || typeof WebApp.openInvoice !== 'function') {
+        throw new Error('Telegram WebApp openInvoice not available');
+      }
+
       WebApp.openInvoice(invoice.invoiceId, async (status: string) => {
         console.log('[SubscriptionModal] Payment status:', status);
         
         if (status === 'paid') {
           try {
-            // Process payment on backend
             await telegramClient.processSuccessfulPayment(
               invoice.invoiceId,
-              'charge_' + Date.now(), // This should come from Telegram callback
+              'charge_' + Date.now(),
               invoice.amount
             );
             
+            console.log('[SubscriptionModal] Payment processed successfully');
             setIsLoading(false);
             onSuccess();
           } catch (error) {

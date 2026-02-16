@@ -9,8 +9,33 @@
     />
     <title>Telegram Message Cleaner</title>
     
-    <!-- Telegram WebApp Script for Mini App support -->
+    <!-- Telegram WebApp Script - MUST be loaded synchronously BEFORE any other scripts -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- Initialize and expose Telegram WebApp globally -->
+    <script>
+      // Make sure Telegram WebApp is available globally
+      console.log('[HTML] Telegram object:', typeof Telegram !== 'undefined' ? 'LOADED ✅' : 'NOT LOADED ❌');
+      console.log('[HTML] Telegram.WebApp:', typeof Telegram !== 'undefined' && Telegram.WebApp ? 'LOADED ✅' : 'NOT LOADED ❌');
+      
+      if (typeof Telegram !== 'undefined' && Telegram.WebApp) {
+        console.log('[HTML] Telegram WebApp initialized in HTML:');
+        console.log('[HTML] - Version:', Telegram.WebApp.version);
+        console.log('[HTML] - Platform:', Telegram.WebApp.platform);
+        console.log('[HTML] - initData length:', (Telegram.WebApp.initData || '').length);
+        
+        // Store reference globally to prevent it from being lost
+        window.__TELEGRAM_WEB_APP__ = Telegram.WebApp;
+        
+        // Initialize immediately
+        Telegram.WebApp.ready();
+        console.log('[HTML] ✅ Telegram.WebApp.ready() called');
+      } else {
+        console.error('[HTML] ❌ Telegram WebApp NOT available!');
+        console.error('[HTML] This means the app is NOT running as Telegram Mini App');
+        console.error('[HTML] Open via: t.me/yourbot?startapp');
+      }
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
