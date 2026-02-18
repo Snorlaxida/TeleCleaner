@@ -934,6 +934,181 @@ export class TelegramClient {
   }
 
   /**
+   * Get all deletion timers for the current user
+   */
+  async getTimers(): Promise<any[]> {
+    if (!API_BASE_URL || !this.authToken || !this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/timers-list`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ userId: this.currentUserId }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Failed to get timers: ${body}`);
+      }
+
+      const data = await res.json();
+      return data.timers || [];
+    } catch (error) {
+      console.error('Failed to get timers:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new deletion timer
+   */
+  async createTimer(
+    frequency: string, 
+    customDays: number | undefined, 
+    chats: any[],
+    startHour?: number,
+    startMinute?: number,
+    userTimezone?: string,
+    startDate?: string
+  ): Promise<any> {
+    if (!API_BASE_URL || !this.authToken || !this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/timers-create`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          userId: this.currentUserId,
+          frequency,
+          customDays,
+          startHour: startHour ?? 0,
+          startMinute: startMinute ?? 0,
+          userTimezone: userTimezone ?? 'UTC',
+          startDate,
+          chats,
+        }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Failed to create timer: ${body}`);
+      }
+
+      const data = await res.json();
+      return data.timer;
+    } catch (error) {
+      console.error('Failed to create timer:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing deletion timer
+   */
+  async updateTimer(timerId: string, updates: {
+    frequency?: string;
+    customDays?: number;
+    startHour?: number;
+    startMinute?: number;
+    userTimezone?: string;
+    startDate?: string;
+    isActive?: boolean;
+    chats?: any[];
+  }): Promise<any> {
+    if (!API_BASE_URL || !this.authToken || !this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/timers-update`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          userId: this.currentUserId,
+          timerId,
+          ...updates,
+        }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Failed to update timer: ${body}`);
+      }
+
+      const data = await res.json();
+      return data.timer;
+    } catch (error) {
+      console.error('Failed to update timer:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a deletion timer
+   */
+  async deleteTimer(timerId: string): Promise<boolean> {
+    if (!API_BASE_URL || !this.authToken || !this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/timers-delete`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          userId: this.currentUserId,
+          timerId,
+        }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Failed to delete timer: ${body}`);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to delete timer:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Toggle timer active status
+   */
+  async toggleTimer(timerId: string): Promise<any> {
+    if (!API_BASE_URL || !this.authToken || !this.currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/timers-toggle`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          userId: this.currentUserId,
+          timerId,
+        }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Failed to toggle timer: ${body}`);
+      }
+
+      const data = await res.json();
+      return data.timer;
+    } catch (error) {
+      console.error('Failed to toggle timer:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Logout from Telegram (clears session on both client and server)
    */
   async logout(): Promise<boolean> {

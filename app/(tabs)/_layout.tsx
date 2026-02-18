@@ -50,6 +50,15 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
+          name="timer"
+          options={{
+            title: t('timer'),
+            tabBarIcon: ({ color }) => (
+              <Text style={{ fontSize: 20, color }}>⏰</Text>
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="settings"
           options={{
             title: t('settings'),
