@@ -25,6 +25,7 @@ export default function SubscriptionModal({ visible, onClose, onSuccess }: Subsc
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isTelegramMiniApp, setIsTelegramMiniApp] = useState(false);
+  const autoRenew = true; // Всегда включено автопродление
 
   // Check if running in Telegram Mini App
   useEffect(() => {
@@ -49,8 +50,8 @@ export default function SubscriptionModal({ visible, onClose, onSuccess }: Subsc
       setIsLoading(true);
       setError(null);
 
-      // Create invoice
-      const invoice = await telegramClient.createSubscriptionInvoice();
+      // Create invoice with auto-renew preference
+      const invoice = await telegramClient.createSubscriptionInvoice(autoRenew);
       console.log('[SubscriptionModal] Invoice created:', invoice);
 
       const WebApp = getTelegramWebApp();
@@ -96,18 +97,38 @@ export default function SubscriptionModal({ visible, onClose, onSuccess }: Subsc
         console.log('[SubscriptionModal] Payment status:', status);
         
         if (status === 'paid') {
+          // Payment is successful! 
+          // The backend will receive webhook from Telegram and activate subscription
+          // We just need to wait a bit and refresh subscription status
+          console.log('[SubscriptionModal] Payment completed! Waiting for webhook...');
+          
           try {
-            await telegramClient.processSuccessfulPayment(
-              invoice.invoiceId,
-              'charge_' + Date.now(),
-              invoice.amount
-            );
+            // Wait 2 seconds for webhook to process
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
-            console.log('[SubscriptionModal] Payment processed successfully');
-            setIsLoading(false);
-            onSuccess();
+            // Check subscription status
+            const subscriptionStatus = await telegramClient.checkSubscription();
+            
+            if (subscriptionStatus.hasActiveSubscription) {
+              console.log('[SubscriptionModal] Subscription activated via webhook!');
+              setIsLoading(false);
+              onSuccess();
+            } else {
+              // Webhook might be delayed, wait a bit more
+              console.log('[SubscriptionModal] Waiting for webhook processing...');
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              
+              const retryStatus = await telegramClient.checkSubscription();
+              if (retryStatus.hasActiveSubscription) {
+                console.log('[SubscriptionModal] Subscription activated!');
+                setIsLoading(false);
+                onSuccess();
+              } else {
+                throw new Error('Subscription not activated after payment');
+              }
+            }
           } catch (error) {
-            console.error('Failed to process payment:', error);
+            console.error('Failed to verify subscription:', error);
             setError(t('subscriptionError'));
             setIsLoading(false);
           }
@@ -155,7 +176,7 @@ export default function SubscriptionModal({ visible, onClose, onSuccess }: Subsc
             style={{ backgroundColor: colors.secondaryBackground }}
           >
             <Text className="text-lg font-semibold text-center" style={{ color: colors.primary }}>
-              {t('subscriptionPrice', { amount: 50 })}
+              {t('subscriptionPrice', { amount: 1 })}
             </Text>
           </View>
 
@@ -172,6 +193,22 @@ export default function SubscriptionModal({ visible, onClose, onSuccess }: Subsc
             </Text>
             <Text className="text-base" style={{ color: colors.text }}>
               {t('benefitUnlimited')}
+            </Text>
+          </View>
+
+          {/* Auto-renew info */}
+          <View
+            className="mb-6 p-3 rounded-lg"
+            style={{ backgroundColor: colorScheme === 'dark' ? '#1a3a1a' : '#f0f9f0' }}
+          >
+            <View className="flex-row items-center mb-2">
+              <Text style={{ fontSize: 20, marginRight: 8 }}>🔄</Text>
+              <Text className="text-base font-semibold" style={{ color: colors.text }}>
+                {t('autoRenewIncluded')}
+              </Text>
+            </View>
+            <Text className="text-sm" style={{ color: colors.secondaryText }}>
+              {t('autoRenewIncludedDescription')}
             </Text>
           </View>
 

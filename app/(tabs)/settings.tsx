@@ -9,6 +9,7 @@ import { useTheme, ThemeMode } from '@/lib/theme';
 import { useTranslation } from 'react-i18next';
 import { saveLanguage } from '@/lib/i18n';
 import SubscriptionModal from '@/components/SubscriptionModal';
+import SubscriptionManagementModal from '@/components/SubscriptionManagementModal';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -22,10 +23,18 @@ export default function SettingsScreen() {
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [showSubscriptionManagement, setShowSubscriptionManagement] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<{
     hasActiveSubscription: boolean;
     subscription: {
+      id: string;
+      status: string;
+      startDate: Date;
       endDate: Date;
+      amount: number;
+      telegramChargeId: string | null;
+      telegramUserId: string | null;
+      isRecurring: boolean;
     } | null;
   } | null>(null);
 
@@ -63,7 +72,11 @@ export default function SettingsScreen() {
   };
 
   const handleSubscriptionPress = () => {
-    if (!subscriptionStatus?.hasActiveSubscription) {
+    if (subscriptionStatus?.hasActiveSubscription && subscriptionStatus.subscription) {
+      // Show management panel if subscription is active
+      setShowSubscriptionManagement(true);
+    } else {
+      // Show purchase modal if no subscription
       setShowSubscriptionModal(true);
     }
   };
@@ -312,6 +325,19 @@ export default function SettingsScreen() {
         onClose={() => setShowSubscriptionModal(false)}
         onSuccess={handleSubscriptionSuccess}
       />
+
+      {/* Subscription Management Modal */}
+      {subscriptionStatus?.subscription && (
+        <SubscriptionManagementModal
+          visible={showSubscriptionManagement}
+          subscription={subscriptionStatus.subscription}
+          onClose={() => setShowSubscriptionManagement(false)}
+          onUpdated={() => {
+            loadSubscriptionStatus();
+            setShowSubscriptionManagement(false);
+          }}
+        />
+      )}
     </ScrollView>
   );
 }

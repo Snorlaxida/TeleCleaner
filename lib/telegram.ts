@@ -799,6 +799,9 @@ export class TelegramClient {
       startDate: Date;
       endDate: Date;
       amount: number;
+      telegramChargeId: string | null;
+      telegramUserId: string | null;
+      isRecurring: boolean;
     } | null;
   }> {
     if (!API_BASE_URL) {
@@ -847,7 +850,7 @@ export class TelegramClient {
   /**
    * Create subscription invoice for Telegram Stars payment
    */
-  async createSubscriptionInvoice(): Promise<{
+  async createSubscriptionInvoice(autoRenew: boolean = true): Promise<{
     invoiceId: string;
     amount: number;
     currency: string;
@@ -871,7 +874,10 @@ export class TelegramClient {
       const res = await fetchWithTimeout(`${API_BASE_URL}/subscription-create-invoice`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
-        body: JSON.stringify({ userId: this.currentUserId }),
+        body: JSON.stringify({ 
+          userId: this.currentUserId,
+          autoRenew,
+        }),
       }, 10000);
 
       if (!res.ok) {
@@ -883,6 +889,88 @@ export class TelegramClient {
       return await res.json();
     } catch (error) {
       console.error('Failed to create subscription invoice:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Cancel auto-renewal of subscription
+   */
+  async cancelSubscriptionAutoRenewal(): Promise<void> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL not configured');
+    }
+
+    if (!this.currentUserId) {
+      throw new Error('User not logged in');
+    }
+
+    if (!this.authToken) {
+      await this.loadToken();
+      if (!this.authToken) {
+        throw new Error('Not authenticated');
+      }
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/subscription-cancel-renewal`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ userId: this.currentUserId }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error('cancelSubscriptionAutoRenewal error:', body);
+        throw new Error('Failed to cancel auto-renewal');
+      }
+    } catch (error) {
+      console.error('Failed to cancel auto-renewal:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Enable auto-renewal of subscription
+   */
+  async enableSubscriptionAutoRenewal(): Promise<void> {
+    if (!API_BASE_URL) {
+      throw new Error('API base URL not configured');
+    }
+
+    if (!this.currentUserId) {
+      throw new Error('User not logged in');
+    }
+
+    if (!this.authToken) {
+      await this.loadToken();
+      if (!this.authToken) {
+        throw new Error('Not authenticated');
+      }
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/subscription-enable-renewal`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ userId: this.currentUserId }),
+      }, 10000);
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error('enableSubscriptionAutoRenewal error:', body);
+        
+        // Try to parse error message from server
+        try {
+          const errorData = JSON.parse(body);
+          throw new Error(errorData.error || 'Failed to enable auto-renewal');
+        } catch (parseError) {
+          // If can't parse, use default message
+          throw new Error('Failed to enable auto-renewal');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to enable auto-renewal:', error);
       throw error;
     }
   }
