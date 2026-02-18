@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { telegramClient } from '@/lib/telegram';
@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { saveLanguage } from '@/lib/i18n';
 import SubscriptionModal from '@/components/SubscriptionModal';
 import SubscriptionManagementModal from '@/components/SubscriptionManagementModal';
+import { useAddToHomeScreen } from '@/lib/useAddToHomeScreen';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -37,6 +38,13 @@ export default function SettingsScreen() {
       isRecurring: boolean;
     } | null;
   } | null>(null);
+  
+  // Add to Home Screen functionality
+  const { 
+    isAvailable: isAddToHomeScreenAvailable, 
+    isInstalled: isInstalledOnHomeScreen,
+    addToHomeScreen: handleAddToHomeScreenAction 
+  } = useAddToHomeScreen();
 
   // Get app version from package.json via expo-constants
   const appVersion = Constants.expoConfig?.version || '1.0.0';
@@ -138,6 +146,20 @@ export default function SettingsScreen() {
     return i18n.language === 'ru' ? t('languageRussian') : t('languageEnglish');
   };
 
+  const handleAddToHomeScreen = () => {
+    if (!isAddToHomeScreenAvailable) {
+      Alert.alert(t('error'), t('addToHomeScreenNotAvailable'));
+      return;
+    }
+
+    if (isInstalledOnHomeScreen) {
+      Alert.alert(t('success'), t('addedToHomeScreen'));
+      return;
+    }
+
+    handleAddToHomeScreenAction();
+  };
+
   const SettingItem = ({ 
     title, 
     subtitle, 
@@ -233,6 +255,13 @@ export default function SettingsScreen() {
           subtitle={getLanguageLabel()}
           onPress={() => setShowLanguageModal(true)}
         />
+        {isAddToHomeScreenAvailable && (
+          <SettingItem
+            title={t('addToHomeScreen')}
+            subtitle={isInstalledOnHomeScreen ? t('addedToHomeScreen') : t('addToHomeScreenDescription')}
+            onPress={handleAddToHomeScreen}
+          />
+        )}
       </View>
 
       {/* About */}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { useTheme } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
 
 interface SelectionOption {
   value: string;
@@ -25,6 +26,7 @@ export default function SelectionModal({
   onClose,
 }: SelectionModalProps) {
   const { colors, colorScheme } = useTheme();
+  const { t } = useTranslation();
 
   const handleSelect = (value: string) => {
     onSelect(value);
@@ -98,7 +100,7 @@ export default function SelectionModal({
                 className="text-base font-semibold"
                 style={{ color: colors.text }}
               >
-                Отмена / Cancel
+                {t('cancel')}
               </Text>
             </TouchableOpacity>
           </View>

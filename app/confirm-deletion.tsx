@@ -17,6 +17,7 @@ interface LightweightChat {
   type: string;
   avatar: string | null;
   photoId?: string; // Telegram photo_id for loading from cache
+  messageCount?: number; // Message count (loaded on demand)
 }
 
 export default function ConfirmDeletionScreen() {
@@ -34,6 +35,7 @@ export default function ConfirmDeletionScreen() {
   const [chats, setChats] = useState<LightweightChat[]>(selectedChatsData);
   const [loadingAvatars, setLoadingAvatars] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [countingChats, setCountingChats] = useState<Set<string>>(new Set()); // Track which chats are being counted
   const [selectedTimeRange, setSelectedTimeRange] = useState<DeletionOption>('last_day');
   const [customRange, setCustomRange] = useState<CustomDateRange | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -179,6 +181,36 @@ export default function ConfirmDeletionScreen() {
     });
   };
 
+  const handleCountMessages = async (chatId: string) => {
+    // Add chat to counting set
+    setCountingChats(prev => new Set(prev).add(chatId));
+    
+    try {
+      // Count messages for this chat
+      const count = await telegramClient.getChatMessageCount(chatId, false);
+      
+      // Update chat with message count
+      setChats(prevChats => 
+        prevChats.map(chat => 
+          chat.id === chatId 
+            ? { ...chat, messageCount: count }
+            : chat
+        )
+      );
+    } catch (error) {
+      console.error(`Failed to count messages for chat ${chatId}:`, error);
+      setErrorMessage(t('error'));
+      setShowErrorDialog(true);
+    } finally {
+      // Remove chat from counting set
+      setCountingChats(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(chatId);
+        return newSet;
+      });
+    }
+  };
+
   const getTimeRangeText = () => {
     if (selectedTimeRange === 'custom' && customRange) {
       return `${customRange.startDate.toLocaleDateString()} - ${customRange.endDate.toLocaleDateString()}`;
@@ -249,6 +281,9 @@ export default function ConfirmDeletionScreen() {
     
     const isFirst = index === 0;
     const isLast = index === chats.length - 1;
+    const isPrivateChat = item.type === 'private' || item.type === 'user';
+    const isCounting = countingChats.has(item.id);
+    const hasCount = item.messageCount !== undefined;
     
     return (
       <View 
@@ -260,33 +295,83 @@ export default function ConfirmDeletionScreen() {
           borderColor: colors.border 
         }}
       >
-        <View className="flex-row items-center py-3 px-3">
-          {/* Avatar */}
-          <View 
-            className="w-10 h-10 rounded-full items-center justify-center mr-3 overflow-hidden"
-            style={{ backgroundColor: isBase64Image ? 'transparent' : colors.primary }}
-          >
-            {isBase64Image ? (
-              <Image 
-                source={{ uri: avatar }} 
-                className="w-full h-full"
-                resizeMode="cover"
-              />
-            ) : (
-              <Text className={isEmoji ? "text-lg" : "text-base font-bold text-white"}>
-                {avatar}
-              </Text>
-            )}
-          </View>
-          <View className="flex-1">
-            <Text 
-              className="text-base font-medium" 
-              style={{ color: colors.text }}
-              numberOfLines={1}
+        <View className="py-3 px-3">
+          <View className="flex-row items-center">
+            {/* Avatar */}
+            <View 
+              className="w-10 h-10 rounded-full items-center justify-center mr-3 overflow-hidden"
+              style={{ backgroundColor: isBase64Image ? 'transparent' : colors.primary }}
             >
-              {item.name}
-            </Text>
+              {isBase64Image ? (
+                <Image 
+                  source={{ uri: avatar }} 
+                  className="w-full h-full"
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text className={isEmoji ? "text-lg" : "text-base font-bold text-white"}>
+                  {avatar}
+                </Text>
+              )}
+            </View>
+            <View className="flex-1">
+              <Text 
+                className="text-base font-medium" 
+                style={{ color: colors.text }}
+                numberOfLines={1}
+              >
+                {item.name}
+              </Text>
+            </View>
           </View>
+          
+          {/* Message count button for non-private chats */}
+          {!isPrivateChat && (
+            <View className="mt-2">
+              {hasCount ? (
+                <View 
+                  className="py-2 px-3 rounded-lg"
+                  style={{ backgroundColor: colors.cardBackground }}
+                >
+                  <Text 
+                    className="text-sm font-medium"
+                    style={{ color: colors.primary }}
+                  >
+                    {t('yourMessages')}: {item.messageCount}
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  className="py-2 px-3 rounded-lg border"
+                  style={{ 
+                    backgroundColor: colors.cardBackground,
+                    borderColor: colors.border,
+                  }}
+                  onPress={() => handleCountMessages(item.id)}
+                  disabled={isCounting}
+                >
+                  {isCounting ? (
+                    <View className="flex-row items-center">
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text 
+                        className="text-sm font-medium ml-2"
+                        style={{ color: colors.secondaryText }}
+                      >
+                        {t('counting')}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text 
+                      className="text-sm font-medium"
+                      style={{ color: colors.primary }}
+                    >
+                      {t('countYourMessages')}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </View>
         {!isLast && (
           <View className="h-px ml-13" style={{ backgroundColor: colors.border }} />

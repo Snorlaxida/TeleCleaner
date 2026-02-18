@@ -292,7 +292,7 @@ export default function SubscriptionManagementModal({
       <ConfirmDialog
         visible={showSuccessDialog}
         title={t('success')}
-        message={subscription.isRecurring ? t('autoRenewalCancelled') : t('autoRenewalEnabled')}
+        message={subscription.isRecurring ? t('autoRenewalCancelled') : t('autoRenewalEnabledMessage')}
         onClose={handleSuccess}
         onConfirm={handleSuccess}
         confirmText={t('ok')}

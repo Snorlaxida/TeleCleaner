@@ -80,6 +80,10 @@ const resources = {
       timerDeletionWarning: 'All your existing messages in selected chats and all future messages will be automatically deleted.',
       deletionConfirmMessage: 'Are you sure you want to delete messages from {{count}} chat(s) for {{timeRange}}? This action cannot be undone.',
       yourMessages: 'Your messages',
+      countYourMessages: 'Count your messages',
+      counting: 'Counting...',
+      messagesCount: '{{count}} messages',
+      messagesCount_one: '{{count}} message',
       
       // Time periods
       last24Hours: 'Last 24 Hours',
@@ -154,6 +158,13 @@ const resources = {
       languageEnglish: 'English',
       languageRussian: 'Русский',
       
+      // Add to Home Screen
+      addToHomeScreen: 'Add to Home Screen',
+      addToHomeScreenDescription: 'Install app on your device',
+      addedToHomeScreen: 'App added to home screen successfully!',
+      addToHomeScreenFailed: 'Failed to add app to home screen',
+      addToHomeScreenNotAvailable: 'This feature is not available on your device',
+      
       // Subscription
       subscription: 'Subscription',
       subscriptionStatus: 'Subscription Status',
@@ -167,7 +178,7 @@ const resources = {
       subscriptionBenefits: 'With subscription you get access to:',
       benefitCustomDates: '• Delete messages by custom date range',
       benefitAllMessages: '• Delete all messages',
-      benefitUnlimited: '• Unlimited access to all features',
+      benefitUnlimited: '• Access to timer feature',
       subscribeToContinue: 'Subscribe to continue',
       featureRequiresSubscription: 'This feature requires an active subscription',
       purchaseNow: 'Purchase Now',
@@ -193,7 +204,7 @@ const resources = {
       cancelAutoRenewalConfirm: 'Are you sure you want to cancel auto-renewal? Your subscription will remain active until the end of the current period, but will not renew automatically.',
       enableAutoRenewalConfirm: 'Enable auto-renewal? Your subscription will automatically renew on {{date}} for {{amount}} Stars.',
       autoRenewalCancelled: 'Auto-renewal has been cancelled. Your subscription will remain active until expiry date.',
-      autoRenewalEnabled: 'Auto-renewal has been enabled. Your subscription will automatically renew.',
+      autoRenewalEnabledMessage: 'Auto-renewal has been enabled. Your subscription will automatically renew.',
       cancelAutoRenewalError: 'Failed to cancel auto-renewal. Please try again.',
       enableAutoRenewalError: 'Failed to enable auto-renewal. Please try again.',
       enableAutoRenewalNotSupported: 'This subscription does not support auto-renewal. Please purchase a new subscription with auto-renewal enabled.',
@@ -327,6 +338,11 @@ const resources = {
       deletionConfirmMessage: 'Вы уверены, что хотите удалить сообщения из {{count}} чата за {{timeRange}}? Это действие нельзя отменить.',
       deletionConfirmMessage_plural: 'Вы уверены, что хотите удалить сообщения из {{count}} чатов за {{timeRange}}? Это действие нельзя отменить.',
       yourMessages: 'Ваши сообщения',
+      countYourMessages: 'Подсчитать ваши сообщения',
+      counting: 'Подсчёт...',
+      messagesCount: '{{count}} сообщений',
+      messagesCount_one: '{{count}} сообщение',
+      messagesCount_few: '{{count}} сообщения',
       
       // Time periods
       last24Hours: 'Последние 24 часа',
@@ -401,6 +417,13 @@ const resources = {
       languageEnglish: 'English',
       languageRussian: 'Русский',
       
+      // Add to Home Screen
+      addToHomeScreen: 'Добавить на главный экран',
+      addToHomeScreenDescription: 'Установить приложение на ваше устройство',
+      addedToHomeScreen: 'Приложение успешно добавлено на главный экран!',
+      addToHomeScreenFailed: 'Не удалось добавить приложение на главный экран',
+      addToHomeScreenNotAvailable: 'Эта функция недоступна на вашем устройстве',
+      
       // Subscription
       subscription: 'Подписка',
       subscriptionStatus: 'Статус подписки',
@@ -414,7 +437,7 @@ const resources = {
       subscriptionBenefits: 'С подпиской вы получаете доступ к:',
       benefitCustomDates: '• Удаление сообщений по выбранным датам',
       benefitAllMessages: '• Удаление всех сообщений',
-      benefitUnlimited: '• Неограниченный доступ ко всем функциям',
+      benefitUnlimited: '• Возможность удалять сообщения по таймеру',
       subscribeToContinue: 'Подпишитесь, чтобы продолжить',
       featureRequiresSubscription: 'Для этой функции требуется активная подписка',
       purchaseNow: 'Купить сейчас',
@@ -440,7 +463,7 @@ const resources = {
       cancelAutoRenewalConfirm: 'Вы уверены, что хотите отменить автопродление? Ваша подписка останется активной до конца текущего периода, но не будет автоматически продлеваться.',
       enableAutoRenewalConfirm: 'Включить автопродление? Ваша подписка автоматически продлится {{date}} за {{amount}} звёздочек.',
       autoRenewalCancelled: 'Автопродление отменено. Ваша подписка останется активной до даты окончания.',
-      autoRenewalEnabled: 'Автопродление включено. Ваша подписка будет автоматически продлеваться.',
+      autoRenewalEnabledMessage: 'Автопродление включено. Ваша подписка будет автоматически продлеваться.',
       cancelAutoRenewalError: 'Не удалось отменить автопродление. Попробуйте снова.',
       enableAutoRenewalError: 'Не удалось включить автопродление. Попробуйте снова.',
       enableAutoRenewalNotSupported: 'Эта подписка не поддерживает автопродление. Пожалуйста, купите новую подписку с включённым автопродлением.',

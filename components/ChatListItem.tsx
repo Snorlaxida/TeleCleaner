@@ -9,7 +9,7 @@ interface Chat {
   timestamp: string;
   avatar?: string; // Emoji, initial letter, or base64 data URL
   photoId?: string; // Telegram photo_id for caching
-  messageCount: number; // Total user's messages in this chat (-1 means loading, -2 means private chat shows "?")
+  messageCount?: number; // Total user's messages in this chat (-1 means loading, -2 means private chat shows "?") - optional now
   avatarLoading?: boolean; // True if avatar is being loaded
 }
 
@@ -104,51 +104,6 @@ export default function ChatListItem({ chat, isSelected, onToggle }: ChatListIte
           >
             {chat.lastMessage}
           </Text>
-          {chat.messageCount === -1 ? (
-            <View className="flex-row items-center ml-2">
-              <Text 
-                className="text-xs mr-1" 
-                style={{ color: colors.secondaryText }}
-              >
-                {t('yourMessages')}:
-              </Text>
-              <ActivityIndicator size="small" color={colors.primary} />
-            </View>
-          ) : chat.messageCount === -2 ? (
-            <View className="flex-row items-center ml-2">
-              <Text 
-                className="text-xs mr-1" 
-                style={{ color: colors.secondaryText }}
-              >
-                {t('yourMessages')}:
-              </Text>
-              <View 
-                className="rounded-full px-2 py-0.5"
-                style={{ backgroundColor: colors.secondaryText }}
-              >
-                <Text className="text-xs text-white font-semibold">
-                  ?
-                </Text>
-              </View>
-            </View>
-          ) : chat.messageCount >= 0 ? (
-            <View className="flex-row items-center ml-2">
-              <Text 
-                className="text-xs mr-1" 
-                style={{ color: colors.secondaryText }}
-              >
-                {t('yourMessages')}:
-              </Text>
-              <View 
-                className="rounded-full px-2 py-0.5"
-                style={{ backgroundColor: chat.messageCount === 0 ? colors.success : colors.primary }}
-              >
-                <Text className="text-xs text-white font-semibold">
-                  {chat.messageCount}
-                </Text>
-              </View>
-            </View>
-          ) : null}
         </View>
       </View>
     </TouchableOpacity>
