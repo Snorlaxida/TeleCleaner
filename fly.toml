@@ -1,0 +1,37 @@
+# Fly.io configuration for TeleCleaner Frontend
+app = "telecleaner-front"
+primary_region = "ams"
+
+# Use existing Railway Dockerfile
+[build]
+dockerfile = "Dockerfile.railway"
+
+# Build args for API URL
+[build.args]
+EXPO_PUBLIC_API_URL = "https://telecleanerback.fly.dev"
+
+# HTTP service configuration
+[http_service]
+internal_port = 3000
+force_https = true
+auto_stop_machines = true
+auto_start_machines = true
+min_machines_running = 0
+processes = ["app"]
+
+# Health check for static content
+[[http_service.checks]]
+interval = "30s"
+timeout = "5s"
+grace_period = "10s"
+method = "GET"
+path = "/"
+
+# VM resources (lighter for frontend)
+[[vm]]
+cpu_kind = "shared"
+cpus = 1
+memory_mb = 256
+
+[env]
+NODE_ENV = "production"
